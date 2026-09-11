@@ -764,6 +764,7 @@ class _SessionSidebar extends StatelessWidget {
       ),
       child: InkWell(
         onTap: () => onOpen(session),
+        onSecondaryTapUp: (details) => _showSessionMenu(context, details, session, index),
         mouseCursor: WidgetStateMouseCursor.clickable,
         child: Container(
           color: selected ? Moba.green.withValues(alpha: 0.25) : null,
@@ -779,22 +780,48 @@ class _SessionSidebar extends StatelessWidget {
               ]),
             ),
             if (session.hasSavedPassword) const Icon(Icons.lock, size: 13, color: Colors.white38),
-            IconButton(
-              tooltip: 'Edit session',
-              visualDensity: VisualDensity.compact,
-              onPressed: () => onEdit(session),
-              icon: const Icon(Icons.edit_outlined, size: 14, color: Colors.white54),
-            ),
-            IconButton(
-              tooltip: 'Delete session',
-              visualDensity: VisualDensity.compact,
-              onPressed: () => onDelete(index),
-              icon: const Icon(Icons.close, size: 14, color: Colors.white38),
-            ),
           ]),
         ),
       ),
     );
+  }
+
+  Future<void> _showSessionMenu(BuildContext context, TapUpDetails details, SavedSession session, int index) async {
+    final action = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        details.globalPosition.dx,
+        details.globalPosition.dy,
+        details.globalPosition.dx + 1,
+        details.globalPosition.dy + 1,
+      ),
+      items: const [
+        PopupMenuItem(value: 'edit', child: ListTile(leading: Icon(Icons.edit_outlined), title: Text('Edit session'))),
+        PopupMenuItem(value: 'delete', child: ListTile(leading: Icon(Icons.delete_outline), title: Text('Delete session'))),
+      ],
+    );
+    if (!context.mounted) return;
+    if (action == 'edit') {
+      onEdit(session);
+      return;
+    }
+    if (action != 'delete') return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete session?'),
+        content: Text('Delete “${session.name}” from saved sessions?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) onDelete(index);
   }
 }
 
