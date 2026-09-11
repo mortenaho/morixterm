@@ -11,6 +11,7 @@ import '../models/remote_entry.dart';
 import '../models/saved_session.dart';
 import 'app_log.dart';
 import 'scp_transfer.dart';
+import 'ssh_welcome_banner.dart';
 
 class SshConnectionRequest {
   const SshConnectionRequest({
@@ -117,6 +118,11 @@ class SshSessionService {
       terminal.onResize = shell.resizeTerminal;
       _stdoutSub = shell.stdout.listen(_writeToTerminal);
       _stderrSub = shell.stderr.listen(_writeToTerminal);
+      terminal.write(sshWelcomeBanner(
+        username: request.username.trim(),
+        host: endpoint.host,
+        port: endpoint.port,
+      ));
       shell.done.then((_) {
         if (!_stopping && _snapshot.phase == ConnectionPhase.connected) {
           _emit(const ConnectionSnapshot(phase: ConnectionPhase.idle));
