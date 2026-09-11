@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Vector mark: remote window, SSH prompt, live-session dot.
+/// The official Morixtrem cyan-to-violet ribbon logo.
 class MorixtremLogo extends StatelessWidget {
   const MorixtremLogo({super.key, this.size = 48, this.showShadow = true});
 
@@ -12,8 +12,10 @@ class MorixtremLogo extends StatelessWidget {
     return SizedBox(
       width: size,
       height: size,
-      child: CustomPaint(
-        painter: MorixtremLogoPainter(showShadow: showShadow && size >= 24),
+      child: Image.asset(
+        'assets/morixtrem-mark.png',
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.high,
       ),
     );
   }
