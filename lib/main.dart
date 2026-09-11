@@ -1458,7 +1458,13 @@ class _SessionSurface extends StatelessWidget {
     if (showTerminal) {
       return ColoredBox(
         color: Moba.terminal,
-        child: TerminalView(terminal!, autofocus: true, padding: const EdgeInsets.all(8), backgroundOpacity: 1),
+        child: TerminalView(
+          terminal!,
+          autofocus: true,
+          hardwareKeyboardOnly: true,
+          padding: const EdgeInsets.all(8),
+          backgroundOpacity: 1,
+        ),
       );
     }
     return ColoredBox(

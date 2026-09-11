@@ -1,0 +1,152 @@
+name: Build and release desktop apps
+
+on:
+  push:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build morixtrem for Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Enable Windows desktop
+        shell: pwsh
+        run: flutter config --enable-windows-desktop
+
+      - name: Generate Windows runner
+        shell: pwsh
+        run: flutter create --platforms=windows .
+
+      - name: Apply morixtrem Windows icon
+        shell: pwsh
+        run: Copy-Item -Force assets/morixtrem.ico windows/runner/resources/app_icon.ico
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze project
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build Windows release
+        run: flutter build windows --release
+
+      - name: Package Windows release
+        shell: pwsh
+        run: |
+          $artifactDirectory = "build/windows/x64/runner/Release"
+          $archivePath = "morixtrem-windows-${{ github.sha }}.zip"
+          if (-not (Test-Path $artifactDirectory)) {
+            throw "Windows build output was not found at $artifactDirectory"
+          }
+          Compress-Archive -Path "$artifactDirectory/*" -DestinationPath $archivePath
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: morixtrem-windows-${{ github.sha }}
+          path: morixtrem-windows-${{ github.sha }}.zip
+          if-no-files-found: error
+
+  build-linux:
+    name: Build morixtrem Debian package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev dpkg-dev
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Enable Linux desktop
+        run: flutter config --enable-linux-desktop
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze project
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build Linux release
+        run: flutter build linux --release
+
+      - name: Package Debian release
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_root="$RUNNER_TEMP/morixtrem-deb"
+          bundle_dir="build/linux/x64/release/bundle"
+          version="0.1.0-${GITHUB_RUN_NUMBER}"
+          deb_name="morixtrem_${version}_amd64.deb"
+
+          test -d "$bundle_dir"
+          mkdir -p "$package_root/DEBIAN" "$package_root/usr/lib/morixtrem" \
+            "$package_root/usr/share/applications" "$package_root/usr/share/icons/hicolor/256x256/apps"
+          cp -a "$bundle_dir/." "$package_root/usr/lib/morixtrem/"
+          cp packaging/deb/DEBIAN/control "$package_root/DEBIAN/control"
+          sed -i "s/^Version:.*/Version: ${version}/" "$package_root/DEBIAN/control"
+          cp packaging/deb/usr/share/applications/morixtrem.desktop \
+            "$package_root/usr/share/applications/morixtrem.desktop"
+          cp assets/logo.png "$package_root/usr/share/icons/hicolor/256x256/apps/morixtrem.png"
+          dpkg-deb --build "$package_root" "$deb_name"
+
+      - name: Upload Debian artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: morixtrem-debian-${{ github.sha }}
+          path: morixtrem_*_amd64.deb
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release
+    if: github.ref == 'refs/heads/main'
+    needs: [build-windows, build-linux]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: morixtrem-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v0.1.0-build.${{ github.run_number }}" \
+            release-assets/* \
+            --repo "${{ github.repository }}" \
+            --title "morixtrem v0.1.0 build ${{ github.run_number }}" \
+            --generate-notes \
+            --prerelease

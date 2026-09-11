@@ -216,7 +216,7 @@ class RdpSessionService {
       '+clipboard',
       '+dynamic-resolution',
       '/network:auto',
-      '/drive:morixtrem,${sharePath}',
+      '/drive:morixtrem,$sharePath',
       '/t:${request.title}',
     ].join('\n'));
     try {
