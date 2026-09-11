@@ -15,6 +15,7 @@ import 'services/rdp_session_service.dart';
 import 'services/session_storage.dart';
 import 'services/ssh_session_service.dart';
 import 'widgets/morixtrem_logo.dart';
+import 'widgets/ssh_terminal_pane.dart';
 
 class Moba {
   static const bg = Color(0xFF2B2B2B);
@@ -1479,13 +1480,7 @@ class _SessionSurface extends StatelessWidget {
     if (showTerminal) {
       return ColoredBox(
         color: Moba.terminal,
-        child: TerminalView(
-          terminal!,
-          autofocus: true,
-          hardwareKeyboardOnly: true,
-          padding: const EdgeInsets.all(8),
-          backgroundOpacity: 1,
-        ),
+        child: SshTerminalPane(terminal: terminal!),
       );
     }
     return ColoredBox(
