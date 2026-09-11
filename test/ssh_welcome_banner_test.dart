@@ -10,11 +10,14 @@ void main() {
       port: 2222,
     );
 
-    expect(banner, contains('Welcome to Morixtrem!'));
-    expect(banner, contains('Morixtrem '));
+    expect(banner, contains('MORI'));
+    expect(banner, contains('XTREM'));
     expect(banner, contains('v1.0.0'));
-    expect(banner, contains('alice@example.com:2222'));
-    expect(banner, contains('SSH client'));
+    expect(banner, contains('alice@example.com'));
+    expect(banner, contains('on port 2222'));
+    expect(banner, contains('● CONNECTED'));
+    expect(banner, contains('Authenticated and ready for commands'));
+    expect(banner, contains('Search terminal output'));
     expect(banner, contains('\x1b['));
   });
 }

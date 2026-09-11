@@ -1,4 +1,4 @@
-/// The small, ANSI-coloured introduction shown when an SSH shell is ready.
+/// The ANSI-coloured dashboard shown when an SSH shell is ready.
 ///
 /// Keeping this separate from the transport code makes the terminal artwork
 /// easy to change without touching authentication or stream handling.
@@ -9,30 +9,32 @@ String sshWelcomeBanner({
 }) {
   const reset = '\x1b[0m';
   const dim = '\x1b[2m';
-  const cyan = '\x1b[38;5;45m';
-  const blue = '\x1b[38;5;39m';
-  const violet = '\x1b[38;5;135m';
+  const cyan = '\x1b[38;5;51m';
+  const blue = '\x1b[38;5;75m';
+  const violet = '\x1b[38;5;141m';
   const green = '\x1b[38;5;82m';
   const yellow = '\x1b[38;5;220m';
   const white = '\x1b[38;5;255m';
+  const muted = '\x1b[38;5;245m';
+  const border = '\x1b[38;5;60m';
 
   return '''
-${cyan}        Welcome to Morixtrem!${reset}
-${blue}        Morixtrem ${white}v1.0.0${reset}
-${dim}        (Your Remote Workspace, Simplified)${reset}
-
-${blue}   /\\        ${violet}/\\${reset}       ${white}>  SSH client       ${green}✓${reset}
-${blue}  /  \\      ${violet}/  \\${reset}      ${white}>  X11-forwarding   ${green}✓${reset}
-${blue} /    \\    ${violet}/    \\${reset}     ${white}>  Port forwarding   ${green}✓${reset}
-${blue}/      \\  ${violet}/      \\${reset}    ${white}>  SFTP browser      ${green}✓${reset}
-${blue}\\      /  ${violet}\\      /${reset}    ${white}>  Multi-execution   ${green}✓${reset}
-${blue} \\    /    ${violet}\\    /${reset}     ${white}>  Tabbed sessions   ${green}✓${reset}
-${blue}  \\  /      ${violet}\\  /${reset}
-${blue}   \\/        ${violet}\\/${reset}
-
-${white}  Morixtrem terminal ready.${reset}
-${dim}  Session: ${username}@${host}:${port}${reset}
-${yellow}  Tip: use the toolbar above for copy, paste, search, and themes.${reset}
-${dim}  ------------------------------------------------------------------------${reset}
+${border}╭────────────────────────────────────────────────────────────────────────╮${reset}
+${border}│${reset} ${cyan}◆${reset} ${white}MORI${cyan}XTREM${reset}                                      ${green}● CONNECTED${reset} ${border}│${reset}
+${border}│${reset}   ${dim}Remote workspace · SSH terminal${reset}                         ${muted}v1.0.0${reset} ${border}│${reset}
+${border}├────────────────────────────────────────────────────────────────────────┤${reset}
+${border}│${reset}  ${muted}SESSION${reset}                                                            ${border}│${reset}
+${border}│${reset}  ${white}${username}@${host}${reset} ${dim}on port ${port}${reset}                                  ${border}│${reset}
+${border}│${reset}  ${green}✓${reset} ${muted}Authenticated and ready for commands${reset}                      ${border}│${reset}
+${border}├────────────────────────────────────────────────────────────────────────┤${reset}
+${border}│${reset}  ${blue}WORKSPACE${reset}                  ${violet}TOOLS${reset}                         ${border}│${reset}
+${border}│${reset}  ${green}✓${reset} Interactive shell              ${green}✓${reset} Copy / paste                  ${border}│${reset}
+${border}│${reset}  ${green}✓${reset} Multi-session tabs             ${green}✓${reset} Search terminal output         ${border}│${reset}
+${border}│${reset}  ${green}✓${reset} SFTP file browser              ${green}✓${reset} Adjustable font & themes       ${border}│${reset}
+${border}│${reset}  ${green}✓${reset} Port forwarding                ${green}✓${reset} Clear terminal                 ${border}│${reset}
+${border}├────────────────────────────────────────────────────────────────────────┤${reset}
+${border}│${reset}  ${yellow}TIP${reset}  Use the toolbar above for terminal tools.                  ${border}│${reset}
+${border}│${reset}       Your shell is ready — type a command to get started.     ${border}│${reset}
+${border}╰────────────────────────────────────────────────────────────────────────╯${reset}
 ''';
 }
