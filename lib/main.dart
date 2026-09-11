@@ -91,6 +91,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
   final List<LiveSession> openSessions = [];
   final SessionStorage sessionStorage = SessionStorage();
   Set<String> folders = <String>{};
+  final Set<String> collapsedFolders = <String>{};
   List<SavedSession> sessions = const [
     SavedSession(name: 'Windows Server', host: '192.168.1.10', port: 3389, username: 'مدیر'),
     SavedSession(name: 'Linux SSH', host: '192.168.1.20', port: 22, username: 'root', protocol: SessionProtocol.ssh),
@@ -217,6 +218,12 @@ class _WorkspacePageState extends State<WorkspacePage> {
         showMessage('جابجایی session ناموفق بود: $error');
       }
     }
+  }
+
+  void _toggleFolder(String folder) {
+    setState(() {
+      if (!collapsedFolders.remove(folder)) collapsedFolders.add(folder);
+    });
   }
 
   Future<void> _deleteFolder(String folder) async {
@@ -537,6 +544,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
                   onCreateFolder: _createFolder,
                   onDeleteFolder: _deleteFolder,
                   onMoveSession: _moveSessionToFolder,
+                  collapsedFolders: collapsedFolders,
+                  onToggleFolder: _toggleFolder,
                 ),
                 Expanded(
                   child: Column(
@@ -670,6 +679,8 @@ class _SessionSidebar extends StatelessWidget {
     required this.onCreateFolder,
     required this.onDeleteFolder,
     required this.onMoveSession,
+    required this.collapsedFolders,
+    required this.onToggleFolder,
   });
   final List<SavedSession> sessions;
   final Set<String> folders;
@@ -681,6 +692,8 @@ class _SessionSidebar extends StatelessWidget {
   final VoidCallback onCreateFolder;
   final ValueChanged<String> onDeleteFolder;
   final void Function(SavedSession session, String? folder) onMoveSession;
+  final Set<String> collapsedFolders;
+  final ValueChanged<String> onToggleFolder;
 
   @override
   Widget build(BuildContext context) {
@@ -706,13 +719,15 @@ class _SessionSidebar extends StatelessWidget {
         Expanded(
           child: ListView(
             children: [
-              _folderHeader(context, null),
-              for (var index = 0; index < sessions.length; index++)
-                if (sessions[index].folder == null) _sessionTile(context, sessions[index], index),
-              for (final folder in (folders.toList()..sort())) ...[
-                _folderHeader(context, folder),
+              _folderHeader(context, null, collapsed: collapsedFolders.contains('')),
+              if (!collapsedFolders.contains(''))
                 for (var index = 0; index < sessions.length; index++)
-                  if (sessions[index].folder == folder) _sessionTile(context, sessions[index], index),
+                  if (sessions[index].folder == null) _sessionTile(context, sessions[index], index),
+              for (final folder in (folders.toList()..sort())) ...[
+                _folderHeader(context, folder, collapsed: collapsedFolders.contains(folder)),
+                if (!collapsedFolders.contains(folder))
+                  for (var index = 0; index < sessions.length; index++)
+                    if (sessions[index].folder == folder) _sessionTile(context, sessions[index], index),
               ],
             ],
           ),
@@ -721,7 +736,7 @@ class _SessionSidebar extends StatelessWidget {
     );
   }
 
-  Widget _folderHeader(BuildContext context, String? folder) {
+  Widget _folderHeader(BuildContext context, String? folder, {required bool collapsed}) {
     return DragTarget<SavedSession>(
       onWillAcceptWithDetails: (details) => details.data.folder != folder,
       onAcceptWithDetails: (details) => onMoveSession(details.data, folder),
@@ -729,6 +744,13 @@ class _SessionSidebar extends StatelessWidget {
         color: candidates.isNotEmpty ? Moba.green.withValues(alpha: 0.28) : const Color(0xFF202020),
         padding: const EdgeInsets.only(left: 10, right: 4, top: 5, bottom: 4),
         child: Row(children: [
+          IconButton(
+            tooltip: collapsed ? 'Expand folder' : 'Collapse folder',
+            onPressed: () => onToggleFolder(folder ?? ''),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 22, height: 22),
+            icon: Icon(collapsed ? Icons.chevron_right : Icons.expand_more, size: 17, color: Colors.white54),
+          ),
           Icon(folder == null ? Icons.inbox_outlined : Icons.folder_outlined, size: 15, color: Colors.white54),
           const SizedBox(width: 6),
           Expanded(child: Text(folder ?? 'No folder', style: const TextStyle(fontSize: 11, color: Colors.white60))),
