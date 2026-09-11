@@ -123,6 +123,7 @@ class SshSessionService {
         host: endpoint.host,
         port: endpoint.port,
       ));
+      _enableSessionColors(shell);
       shell.done.then((_) {
         if (!_stopping && _snapshot.phase == ConnectionPhase.connected) {
           _emit(const ConnectionSnapshot(phase: ConnectionPhase.idle));
@@ -151,6 +152,20 @@ class SshSessionService {
       await _closeRemote();
       throw SshException(message);
     }
+  }
+
+  void _enableSessionColors(SSHSession shell) {
+    // Apply styling only to this shell process; nothing is written to the
+    // remote user's profile or persisted on the server.
+    const command = r'''if [ -n "$BASH_VERSION" ]; then
+PS1='\[\e[38;5;51m\]\u\[\e[0m\]@\[\e[38;5;141m\]\h\[\e[0m\]:\[\e[38;5;75m\]\w\[\e[0m\]\$ ';
+elif [ -n "$ZSH_VERSION" ]; then
+PROMPT='%F{cyan}%n%f@%F{magenta}%m%f:%F{blue}%~%f %# ';
+fi
+alias ls='ls --color=auto'
+alias ll='ls -lah --color=auto'
+''';
+    shell.write(Uint8List.fromList(utf8.encode('$command\n')));
   }
 
   Future<void> disconnect() async {
