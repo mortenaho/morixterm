@@ -30,6 +30,10 @@ jobs:
         shell: pwsh
         run: flutter create --platforms=windows .
 
+      - name: Apply morixtrem Windows icon
+        shell: pwsh
+        run: Copy-Item -Force assets/morixtrem.ico windows/runner/resources/app_icon.ico
+
       - name: Install dependencies
         run: flutter pub get
 
