@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-/// The official Morixtrem cyan-to-violet ribbon logo.
-class MorixtremLogo extends StatelessWidget {
-  const MorixtremLogo({super.key, this.size = 48, this.showShadow = true});
+/// The official Morixterm cyan-to-violet ribbon logo.
+class MorixtermLogo extends StatelessWidget {
+  const MorixtermLogo({super.key, this.size = 48, this.showShadow = true});
 
   final double size;
   final bool showShadow;
@@ -13,7 +13,7 @@ class MorixtremLogo extends StatelessWidget {
       width: size,
       height: size,
       child: Image.asset(
-        'assets/morixtrem-mark.png',
+        'assets/morixterm-mark.png',
         fit: BoxFit.contain,
         filterQuality: FilterQuality.high,
       ),
@@ -21,8 +21,8 @@ class MorixtremLogo extends StatelessWidget {
   }
 }
 
-class MorixtremWordmark extends StatelessWidget {
-  const MorixtremWordmark({super.key, this.logoSize = 48});
+class MorixtermWordmark extends StatelessWidget {
+  const MorixtermWordmark({super.key, this.logoSize = 48});
 
   final double logoSize;
 
@@ -32,7 +32,7 @@ class MorixtremWordmark extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        MorixtremLogo(size: logoSize),
+        MorixtermLogo(size: logoSize),
         SizedBox(width: logoSize * 0.28),
         Text.rich(
           TextSpan(
@@ -65,8 +65,8 @@ class MorixtremWordmark extends StatelessWidget {
   }
 }
 
-class MorixtremLogoPainter extends CustomPainter {
-  const MorixtremLogoPainter({this.showShadow = true});
+class MorixtermLogoPainter extends CustomPainter {
+  const MorixtermLogoPainter({this.showShadow = true});
 
   final bool showShadow;
 
@@ -149,5 +149,5 @@ class MorixtremLogoPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(MorixtremLogoPainter oldDelegate) => oldDelegate.showShadow != showShadow;
+  bool shouldRepaint(MorixtermLogoPainter oldDelegate) => oldDelegate.showShadow != showShadow;
 }

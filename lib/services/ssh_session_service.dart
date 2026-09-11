@@ -158,9 +158,9 @@ class SshSessionService {
     // Apply styling only to this shell process; nothing is written to the
     // remote user's profile or persisted on the server.
     const command = r'''if [ -n "$BASH_VERSION" ]; then
-PS1='\[\e[38;5;51m\]\u\[\e[0m\]@\[\e[38;5;141m\]\h\[\e[0m\]:\[\e[38;5;75m\]\w\[\e[0m\]\$ ';
+PS1='\[\e[38;5;51m\]\u\[\e[0m\]@\[\e[38;5;141m\]\h\[\e[0m\]:\[\e[38;5;82m\]\w\[\e[0m\]\$ ';
 elif [ -n "$ZSH_VERSION" ]; then
-PROMPT='%F{cyan}%n%f@%F{magenta}%m%f:%F{blue}%~%f %# ';
+PROMPT='%F{cyan}%n%f@%F{magenta}%m%f:%F{green}%~%f %# ';
 fi
 alias ls='ls --color=auto'
 alias ll='ls -lah --color=auto'
@@ -244,14 +244,14 @@ alias ll='ls -lah --color=auto'
     final endpoint = parseEndpoint(request.host, request.port);
     final destDir = remoteDir.isEmpty || remoteDir == '.' ? '~/' : (remoteDir.endsWith('/') ? remoteDir : '$remoteDir/');
     final dest = '${request.username.trim()}@${endpoint.host}:${_scpQuote(destDir)}';
-    final work = await Directory.systemTemp.createTemp('morixtrem-scp-');
+    final work = await Directory.systemTemp.createTemp('morixterm-scp-');
     final askpass = File('${work.path}/askpass');
-    await askpass.writeAsString('#!/bin/sh\nprintf %s "\$MORIXTREM_SSH_PASS"\n');
+    await askpass.writeAsString('#!/bin/sh\nprintf %s "\$MORIXTERM_SSH_PASS"\n');
     await Process.run('chmod', ['700', askpass.path]);
     try {
       final environment = Map<String, String>.from(Platform.environment);
       if (request.password.isNotEmpty) {
-        environment['MORIXTREM_SSH_PASS'] = request.password;
+        environment['MORIXTERM_SSH_PASS'] = request.password;
         environment['SSH_ASKPASS'] = askpass.path;
         environment['SSH_ASKPASS_REQUIRE'] = 'force';
         environment['DISPLAY'] = environment['DISPLAY'] ?? ':0';

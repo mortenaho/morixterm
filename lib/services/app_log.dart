@@ -6,22 +6,22 @@ class AppLog {
   static String get lastPath {
     final home = Platform.environment['HOME'];
     if (home != null && home.isNotEmpty) {
-      return '$home/.local/share/morixtrem/morixtrem-last.log';
+      return '$home/.local/share/morixterm/morixterm-last.log';
     }
-    return '${Directory.current.path}/morixtrem-last.log';
+    return '${Directory.current.path}/morixterm-last.log';
   }
 
   static String get historyPath {
     final home = Platform.environment['HOME'];
     if (home != null && home.isNotEmpty) {
-      return '$home/.local/share/morixtrem/morixtrem.log';
+      return '$home/.local/share/morixterm/morixterm.log';
     }
-    return '${Directory.current.path}/morixtrem.log';
+    return '${Directory.current.path}/morixterm.log';
   }
 
   static List<String> get lastPaths => [
         lastPath,
-        '${Directory.current.path}/morixtrem-last.log',
+        '${Directory.current.path}/morixterm-last.log',
       ];
 
   static Future<void> startAttempt(String title) async {

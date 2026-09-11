@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:morixtrem/services/ssh_welcome_banner.dart';
+import 'package:morixterm/services/ssh_welcome_banner.dart';
 
 void main() {
   test('renders the SSH welcome banner with the active session', () {

@@ -14,7 +14,7 @@ import 'services/app_log.dart';
 import 'services/rdp_session_service.dart';
 import 'services/session_storage.dart';
 import 'services/ssh_session_service.dart';
-import 'widgets/morixtrem_logo.dart';
+import 'widgets/morixterm_logo.dart';
 import 'widgets/ssh_terminal_pane.dart';
 
 class Moba {
@@ -42,16 +42,16 @@ void main() {
     AppLog.line('$stack');
     return true;
   };
-  runApp(const MorixtremApp());
+  runApp(const MorixtermApp());
 }
 
-class MorixtremApp extends StatelessWidget {
-  const MorixtremApp({super.key});
+class MorixtermApp extends StatelessWidget {
+  const MorixtermApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'morixtrem',
+      title: 'morixterm',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
@@ -1130,7 +1130,7 @@ class _AboutDialog extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  const MorixtremLogo(size: 68),
+                  const MorixtermLogo(size: 68),
                   const SizedBox(width: 16),
                   const Expanded(
                     child: Column(
@@ -1281,7 +1281,7 @@ class _WelcomePane extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const MorixtremWordmark(logoSize: 64),
+              const MorixtermWordmark(logoSize: 64),
               const SizedBox(height: 18),
               Text(
                 [

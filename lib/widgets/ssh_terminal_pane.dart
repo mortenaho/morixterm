@@ -15,11 +15,11 @@ class SshTerminalPane extends StatefulWidget {
 class _SshTerminalPaneState extends State<SshTerminalPane> {
   late final TerminalController _controller;
   var _fontSize = 13.0;
-  var _themeMode = _TerminalThemeMode.morixtrem;
+  var _themeMode = _TerminalThemeMode.morixterm;
 
   TerminalTheme get _theme {
     switch (_themeMode) {
-      case _TerminalThemeMode.morixtrem:
+      case _TerminalThemeMode.morixterm:
         return TerminalThemes.defaultTheme;
       case _TerminalThemeMode.black:
         return TerminalThemes.whiteOnBlack;
@@ -260,11 +260,11 @@ class _SshTerminalPaneState extends State<SshTerminalPane> {
   }
 }
 
-enum _TerminalThemeMode { morixtrem, black, amber, dracula, light }
+enum _TerminalThemeMode { morixterm, black, amber, dracula, light }
 
 String _themeLabel(_TerminalThemeMode mode) {
   switch (mode) {
-    case _TerminalThemeMode.morixtrem:
+    case _TerminalThemeMode.morixterm:
       return 'Morixterm';
     case _TerminalThemeMode.black:
       return 'Black & white';
@@ -320,7 +320,7 @@ class _TerminalToolbar extends StatelessWidget {
             initialValue: themeMode,
             onSelected: onThemeChanged,
             itemBuilder: (context) => const [
-              PopupMenuItem(value: _TerminalThemeMode.morixtrem, child: Text('Morixterm dark')),
+              PopupMenuItem(value: _TerminalThemeMode.morixterm, child: Text('Morixterm dark')),
               PopupMenuItem(value: _TerminalThemeMode.black, child: Text('Black & white')),
               PopupMenuItem(value: _TerminalThemeMode.amber, child: Text('Amber DevOps')),
               PopupMenuItem(value: _TerminalThemeMode.dracula, child: Text('Dracula')),

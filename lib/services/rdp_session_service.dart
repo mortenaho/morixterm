@@ -13,7 +13,7 @@ class RdpConnectionRequest {
     required this.username,
     required this.password,
     this.port = 3389,
-    this.title = 'morixtrem',
+    this.title = 'morixterm',
   });
 
   final String host;
@@ -115,7 +115,7 @@ class RdpSessionService {
 
   static String get sharePath {
     final home = Platform.environment['HOME'] ?? Directory.systemTemp.path;
-    return '$home/.local/share/morixtrem/share';
+    return '$home/.local/share/morixterm/share';
   }
 
   static Future<Directory> ensureShareDir() async {
@@ -189,7 +189,7 @@ class RdpSessionService {
 
     final home = Platform.environment['HOME'] ?? '';
     final bundled = <String>[
-      if (home.isNotEmpty) '$home/.local/share/morixtrem/xfreerdp',
+      if (home.isNotEmpty) '$home/.local/share/morixterm/xfreerdp',
       '${File(Platform.resolvedExecutable).parent.path}/xfreerdp',
       '${Directory.current.path}/linux/vendor/xfreerdp',
     ];
@@ -205,7 +205,7 @@ class RdpSessionService {
     ({String host, int port}) endpoint,
   ) async {
     final argsFile = File(
-      '${Directory.systemTemp.path}/morixtrem-${DateTime.now().microsecondsSinceEpoch}.args',
+      '${Directory.systemTemp.path}/morixterm-${DateTime.now().microsecondsSinceEpoch}.args',
     );
     await ensureShareDir();
     await argsFile.writeAsString([
@@ -216,7 +216,7 @@ class RdpSessionService {
       '+clipboard',
       '+dynamic-resolution',
       '/network:auto',
-      '/drive:morixtrem,$sharePath',
+      '/drive:morixterm,$sharePath',
       '/t:${request.title}',
     ].join('\n'));
     try {
