@@ -581,6 +581,13 @@ class _WorkspacePageState extends State<WorkspacePage> {
     showMessage('تنظیمات session ذخیره شد');
   }
 
+  Future<void> _showAbout() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => const _AboutDialog(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final current = snapshot;
@@ -599,6 +606,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
           _ToolBar(
             onSession: _openNewSession,
             onFiles: _openFilesPane,
+            onAbout: _showAbout,
             onDisconnect: hasLiveSession ? _disconnect : null,
             connected: hasLiveSession,
           ),
@@ -698,10 +706,12 @@ class _ToolBar extends StatelessWidget {
   const _ToolBar(
       {required this.onSession,
       required this.onFiles,
+      required this.onAbout,
       required this.connected,
       this.onDisconnect});
   final VoidCallback onSession;
   final VoidCallback onFiles;
+  final VoidCallback onAbout;
   final VoidCallback? onDisconnect;
   final bool connected;
 
@@ -722,6 +732,11 @@ class _ToolBar extends StatelessWidget {
             label: 'Files',
             color: Colors.orangeAccent,
             onTap: onFiles),
+        _ToolBtn(
+            icon: Icons.info_outline,
+            label: 'About',
+            color: Colors.lightBlueAccent,
+            onTap: onAbout),
         _ToolBtn(icon: Icons.fullscreen, label: 'Fullscreen', onTap: () {}),
         _ToolBtn(
           icon: Icons.link_off,
@@ -1079,6 +1094,71 @@ class _Tab extends StatelessWidget {
               ),
             ),
         ]),
+      ),
+    );
+  }
+}
+
+class _AboutDialog extends StatelessWidget {
+  const _AboutDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: Moba.panel,
+      titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+      contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      title: const Row(
+        children: [
+          MorixtremLogo(size: 42),
+          SizedBox(width: 12),
+          Text('morixtrem', style: TextStyle(fontWeight: FontWeight.w700)),
+        ],
+      ),
+      content: const SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Remote workspace, simplified.', style: TextStyle(color: Colors.white70)),
+            SizedBox(height: 18),
+            _AboutRow(label: 'Version', value: '0.1.0'),
+            _AboutRow(label: 'Build', value: 'SSH · RDP · SCP'),
+            SizedBox(height: 18),
+            Text(
+              'Connect to remote machines, manage multiple sessions, browse files, and transfer data from one focused desktop workspace.',
+              style: TextStyle(height: 1.45, color: Colors.white60),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
+      ],
+    );
+  }
+}
+
+class _AboutRow extends StatelessWidget {
+  const _AboutRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          SizedBox(width: 76, child: Text(label, style: const TextStyle(color: Colors.white54))),
+          Text(value, style: const TextStyle(color: Colors.white)),
+        ],
       ),
     );
   }
