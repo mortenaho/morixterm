@@ -1,0 +1,26 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Morixterm.Desktop.Views.ConnectionDialog" Width="460" Height="430" WindowStartupLocation="CenterOwner"
+        Title="New session" CanResize="False">
+  <Grid RowDefinitions="Auto,*,Auto" Margin="24">
+    <TextBlock Text="Session settings" FontSize="22" FontWeight="SemiBold" />
+    <StackPanel Grid.Row="1" Spacing="12" Margin="0,20,0,12">
+      <TextBox Name="NameBox" Watermark="Session name" />
+      <Grid ColumnDefinitions="*,120" ColumnSpacing="10">
+        <TextBox Name="HostBox" Watermark="Host or address" />
+        <NumericUpDown Grid.Column="1" Name="PortBox" Minimum="1" Maximum="65535" Value="3389" />
+      </Grid>
+      <ComboBox Name="ProtocolBox" SelectedIndex="0">
+        <ComboBoxItem Content="RDP · Windows desktop" />
+        <ComboBoxItem Content="SSH · Terminal" />
+      </ComboBox>
+      <TextBox Name="UsernameBox" Watermark="Username" />
+      <TextBox Name="PasswordBox" Watermark="Password" PasswordChar="●" />
+      <CheckBox Name="SavePasswordBox" Content="Save password locally" />
+      <TextBlock Name="ErrorText" Foreground="#ff6b6b" TextWrapping="Wrap" />
+    </StackPanel>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+      <Button Content="Cancel" Click="Cancel" />
+      <Button Content="Connect" Classes="accent" Click="Connect" />
+    </StackPanel>
+  </Grid>
+</Window>

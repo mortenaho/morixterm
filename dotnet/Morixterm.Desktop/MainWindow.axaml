@@ -1,0 +1,90 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Morixterm.Desktop.MainWindow" Width="1280" Height="760" MinWidth="960" MinHeight="600"
+        Title="Morixterm" Background="#202124">
+  <Grid RowDefinitions="64,*,28">
+    <Border Grid.Row="0" Background="#303134" BorderBrush="#47494d" BorderThickness="0,0,0,1">
+      <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="4" Margin="10,0">
+        <TextBlock Text="◈" FontSize="26" Foreground="#3d9970" VerticalAlignment="Center" Margin="4,0,8,0" />
+        <TextBlock Text="Morixterm" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,18,0" />
+        <Button Classes="toolButton" Content="＋  Session" Click="NewSession" />
+        <Button Classes="toolButton" Content="▣  Files" Click="OpenFiles" />
+        <Button Classes="toolButton" Content="ⓘ  About" Click="About" />
+        <Button Classes="toolButton" Content="⛶  Fullscreen" Click="Fullscreen" />
+        <Button Classes="toolButton" Content="⏏  Disconnect" Click="Disconnect" />
+      </StackPanel>
+    </Border>
+
+    <Grid Grid.Row="1" ColumnDefinitions="280,*">
+      <Border Grid.Column="0" Background="#252629" BorderBrush="#47494d" BorderThickness="0,0,1,0">
+        <DockPanel>
+          <StackPanel DockPanel.Dock="Top" Margin="14,16,14,10" Spacing="7">
+            <TextBlock Text="SAVED SESSIONS" FontSize="11" Foreground="#9aa0a6" FontWeight="SemiBold" />
+            <Button Content="＋  New session" HorizontalContentAlignment="Left" Click="NewSession" />
+            <Button Content="＋  New folder" HorizontalContentAlignment="Left" Click="NewFolder" />
+          </StackPanel>
+          <ListBox Name="SessionList" Margin="8,0,8,12" DoubleTapped="OpenSession">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <Border Padding="9" Margin="0,2" CornerRadius="4">
+                  <Grid ColumnDefinitions="28,*,Auto" RowDefinitions="Auto,Auto">
+                    <TextBlock Grid.RowSpan="2" Text="{Binding ProtocolLabel}" FontSize="10" Foreground="#e6b422" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="SemiBold" />
+                    <TextBlock Grid.Column="1" Grid.Row="1" Text="{Binding Endpoint}" Classes="muted" FontSize="11" />
+                    <Button Grid.Column="2" Grid.RowSpan="2" Content="⋯" Tag="{Binding}" Click="SessionMenu" Padding="8,2" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </Border>
+
+      <Grid Grid.Column="1" RowDefinitions="42,*">
+        <Border Background="#282a2d" BorderBrush="#47494d" BorderThickness="0,0,0,1">
+          <StackPanel Orientation="Horizontal" Spacing="2" Margin="8,5">
+            <Button Name="HomeTab" Content="⌂  Home" Click="Home" />
+            <ItemsControl Name="Tabs" />
+          </StackPanel>
+        </Border>
+        <Grid Grid.Row="1">
+          <Border Name="WelcomePane" Background="#202124" Padding="52">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14" MaxWidth="600">
+              <TextBlock Text="◈  MORIXTERM" FontSize="30" FontWeight="SemiBold" Foreground="#e6e8eb" HorizontalAlignment="Center" />
+              <TextBlock Text="A focused cross-platform terminal and remote-session workspace." Classes="muted" FontSize="16" HorizontalAlignment="Center" />
+              <TextBlock Text="Create an RDP or SSH session from the toolbar, then open it from the session list." Classes="muted" TextWrapping="Wrap" TextAlignment="Center" />
+              <Button Content="＋  Create your first session" HorizontalAlignment="Center" Click="NewSession" Margin="0,12,0,0" />
+            </StackPanel>
+          </Border>
+          <Grid Name="SessionPane" IsVisible="False" RowDefinitions="Auto,*,Auto" Background="#111214">
+            <Border Background="#282a2d" Padding="18,14">
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <TextBlock Name="SessionTitle" FontSize="18" FontWeight="SemiBold" />
+                <TextBlock Name="SessionEndpoint" Classes="muted" VerticalAlignment="Center" />
+                <TextBlock Name="SessionState" Foreground="#3d9970" VerticalAlignment="Center" />
+              </StackPanel>
+            </Border>
+            <TextBox Grid.Row="1" Name="TerminalOutput" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
+                     Background="#0c0c0c" Foreground="#e4e4e4" FontFamily="Cascadia Mono, DejaVu Sans Mono" FontSize="13"
+                     Padding="18" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" />
+            <TextBox Grid.Row="2" Name="TerminalInput" Watermark="Type a command and press Enter…" KeyDown="TerminalKeyDown" Margin="10" />
+          </Grid>
+          <Grid Name="FilesPane" IsVisible="False" Background="#202124" RowDefinitions="Auto,*">
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="18">
+              <Button Content="↑  Up" Click="FilesUnavailable" />
+              <Button Content="↻  Refresh" Click="FilesUnavailable" />
+              <Button Content="⇧  Upload" Click="FilesUnavailable" />
+              <TextBlock Text="Remote files" FontSize="18" VerticalAlignment="Center" Margin="10,0,0,0" />
+            </StackPanel>
+            <TextBlock Grid.Row="1" Name="FilesMessage" Text="Connect to a session to browse remote files." Classes="muted" HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Grid>
+        </Grid>
+      </Grid>
+    </Grid>
+    <Border Grid.Row="2" Background="#1b7a5a" Padding="12,0">
+      <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="20">
+        <TextBlock Name="StatusText" Text="Ready" Foreground="White" />
+        <TextBlock Text="SSH uses SSH.NET · RDP backend can be added per platform" Foreground="#c5e7d9" FontSize="11" />
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>
