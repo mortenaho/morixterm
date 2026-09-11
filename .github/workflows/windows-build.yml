@@ -1,0 +1,60 @@
+name: Build Windows app
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Build morixtrem for Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Enable Windows desktop
+        shell: pwsh
+        run: flutter config --enable-windows-desktop
+
+      - name: Generate Windows runner
+        shell: pwsh
+        run: flutter create --platforms=windows .
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze project
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build Windows release
+        run: flutter build windows --release
+
+      - name: Package Windows release
+        shell: pwsh
+        run: |
+          $artifactDirectory = "build/windows/x64/runner/Release"
+          $archivePath = "morixtrem-windows-${{ github.sha }}.zip"
+          if (-not (Test-Path $artifactDirectory)) {
+            throw "Windows build output was not found at $artifactDirectory"
+          }
+          Compress-Archive -Path "$artifactDirectory/*" -DestinationPath $archivePath
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: morixtrem-windows-${{ github.sha }}
+          path: morixtrem-windows-${{ github.sha }}.zip
+          if-no-files-found: error
