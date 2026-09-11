@@ -14,7 +14,7 @@ import 'services/app_log.dart';
 import 'services/rdp_session_service.dart';
 import 'services/session_storage.dart';
 import 'services/ssh_session_service.dart';
-import 'widgets/rdp_desk_logo.dart';
+import 'widgets/morixtrem_logo.dart';
 
 class Moba {
   static const bg = Color(0xFF2B2B2B);
@@ -41,11 +41,11 @@ void main() {
     AppLog.line('$stack');
     return true;
   };
-  runApp(const RdpDeskApp());
+  runApp(const MorixtremApp());
 }
 
-class RdpDeskApp extends StatelessWidget {
-  const RdpDeskApp({super.key});
+class MorixtremApp extends StatelessWidget {
+  const MorixtremApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -542,7 +542,7 @@ class _MenuBar extends StatelessWidget {
       child: Row(children: [
         const Padding(
           padding: EdgeInsets.only(left: 8, right: 4),
-          child: RdpDeskLogo(size: 16, showShadow: false),
+          child: MorixtremLogo(size: 16, showShadow: false),
         ),
         item('Session', onSession),
         item('View', () {}),
@@ -771,7 +771,7 @@ class _WelcomePane extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const RdpDeskWordmark(logoSize: 64),
+              const MorixtremWordmark(logoSize: 64),
               const SizedBox(height: 18),
               Text(
                 [

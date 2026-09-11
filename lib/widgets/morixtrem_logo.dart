@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 /// Vector mark: remote window, SSH prompt, live-session dot.
-class RdpDeskLogo extends StatelessWidget {
-  const RdpDeskLogo({super.key, this.size = 48, this.showShadow = true});
+class MorixtremLogo extends StatelessWidget {
+  const MorixtremLogo({super.key, this.size = 48, this.showShadow = true});
 
   final double size;
   final bool showShadow;
@@ -13,14 +13,14 @@ class RdpDeskLogo extends StatelessWidget {
       width: size,
       height: size,
       child: CustomPaint(
-        painter: RdpDeskLogoPainter(showShadow: showShadow && size >= 24),
+        painter: MorixtremLogoPainter(showShadow: showShadow && size >= 24),
       ),
     );
   }
 }
 
-class RdpDeskWordmark extends StatelessWidget {
-  const RdpDeskWordmark({super.key, this.logoSize = 48});
+class MorixtremWordmark extends StatelessWidget {
+  const MorixtremWordmark({super.key, this.logoSize = 48});
 
   final double logoSize;
 
@@ -30,7 +30,7 @@ class RdpDeskWordmark extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        RdpDeskLogo(size: logoSize),
+        MorixtremLogo(size: logoSize),
         SizedBox(width: logoSize * 0.28),
         Text.rich(
           TextSpan(
@@ -63,8 +63,8 @@ class RdpDeskWordmark extends StatelessWidget {
   }
 }
 
-class RdpDeskLogoPainter extends CustomPainter {
-  const RdpDeskLogoPainter({this.showShadow = true});
+class MorixtremLogoPainter extends CustomPainter {
+  const MorixtremLogoPainter({this.showShadow = true});
 
   final bool showShadow;
 
@@ -147,5 +147,5 @@ class RdpDeskLogoPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(RdpDeskLogoPainter oldDelegate) => oldDelegate.showShadow != showShadow;
+  bool shouldRepaint(MorixtremLogoPainter oldDelegate) => oldDelegate.showShadow != showShadow;
 }

@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=morixtrem
-Comment=RDP desktop client and file transfer
+Comment=morixtrem remote desktop client and file transfer
 Exec=/usr/lib/morixtrem/morixtrem
 Icon=morixtrem
 Terminal=false
