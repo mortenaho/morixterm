@@ -36,5 +36,6 @@ ${border}├──────────────────────�
 ${border}│${reset}  ${yellow}TIP${reset}  Use the toolbar above for terminal tools.                  ${border}│${reset}
 ${border}│${reset}       Your shell is ready — type a command to get started.     ${border}│${reset}
 ${border}╰────────────────────────────────────────────────────────────────────────╯${reset}
-''';
+'''
+      .replaceAll('\n', '\r\n');
 }
