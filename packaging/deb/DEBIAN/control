@@ -1,0 +1,9 @@
+Package: morixtrem
+Version: 0.1.0-1
+Section: net
+Priority: optional
+Architecture: amd64
+Maintainer: morixtrem
+Description: morixtrem desktop client
+ A focused Flutter desktop client for RDP sessions and file transfer.
+Depends: libc6, libgtk-3-0, libglib2.0-0, libx11-6, libxrandr2, libxrender1, libxi6, libxkbcommon0
