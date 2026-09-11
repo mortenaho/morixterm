@@ -49,6 +49,58 @@ class _SshTerminalPaneState extends State<SshTerminalPane> {
           searchHitBackgroundCurrent: Color(0xFFFFF4D6),
           searchHitForeground: Color(0xFF17130A),
         );
+      case _TerminalThemeMode.dracula:
+        return const TerminalTheme(
+          cursor: Color(0xFFF8F8F2),
+          selection: Color(0x665A4E7C),
+          foreground: Color(0xFFF8F8F2),
+          background: Color(0xFF282A36),
+          black: Color(0xFF21222C),
+          white: Color(0xFFF8F8F2),
+          red: Color(0xFFFF5555),
+          green: Color(0xFF50FA7B),
+          yellow: Color(0xFFF1FA8C),
+          blue: Color(0xFFBD93F9),
+          magenta: Color(0xFFFF79C6),
+          cyan: Color(0xFF8BE9FD),
+          brightBlack: Color(0xFF6272A4),
+          brightRed: Color(0xFFFF6E6E),
+          brightGreen: Color(0xFF69FF94),
+          brightYellow: Color(0xFFFFFFA5),
+          brightBlue: Color(0xFFD6ACFF),
+          brightMagenta: Color(0xFFFF92DF),
+          brightCyan: Color(0xFFA4FFFF),
+          brightWhite: Color(0xFFFFFFFF),
+          searchHitBackground: Color(0xFFF1FA8C),
+          searchHitBackgroundCurrent: Color(0xFFFF79C6),
+          searchHitForeground: Color(0xFF282A36),
+        );
+      case _TerminalThemeMode.light:
+        return const TerminalTheme(
+          cursor: Color(0xFF243447),
+          selection: Color(0x553B82F6),
+          foreground: Color(0xFF243447),
+          background: Color(0xFFF4F7FB),
+          black: Color(0xFF243447),
+          white: Color(0xFFFFFFFF),
+          red: Color(0xFFB42318),
+          green: Color(0xFF067647),
+          yellow: Color(0xFF8A6100),
+          blue: Color(0xFF175CD3),
+          magenta: Color(0xFF9E2A8A),
+          cyan: Color(0xFF087F8C),
+          brightBlack: Color(0xFF667085),
+          brightRed: Color(0xFFD92D20),
+          brightGreen: Color(0xFF039855),
+          brightYellow: Color(0xFFB54708),
+          brightBlue: Color(0xFF2E90FA),
+          brightMagenta: Color(0xFFD444B8),
+          brightCyan: Color(0xFF0E9FAD),
+          brightWhite: Color(0xFF101828),
+          searchHitBackground: Color(0xFFFFE08A),
+          searchHitBackgroundCurrent: Color(0xFFFDB022),
+          searchHitForeground: Color(0xFF243447),
+        );
     }
   }
 
@@ -196,6 +248,7 @@ class _SshTerminalPaneState extends State<SshTerminalPane> {
             },
             child: TerminalView(
               widget.terminal,
+              key: ValueKey(_themeMode),
               controller: _controller,
               theme: _theme,
               textStyle: style,
@@ -212,7 +265,22 @@ class _SshTerminalPaneState extends State<SshTerminalPane> {
   }
 }
 
-enum _TerminalThemeMode { morixtrem, black, amber }
+enum _TerminalThemeMode { morixtrem, black, amber, dracula, light }
+
+String _themeLabel(_TerminalThemeMode mode) {
+  switch (mode) {
+    case _TerminalThemeMode.morixtrem:
+      return 'Morixtrem';
+    case _TerminalThemeMode.black:
+      return 'Black & white';
+    case _TerminalThemeMode.amber:
+      return 'Amber DevOps';
+    case _TerminalThemeMode.dracula:
+      return 'Dracula';
+    case _TerminalThemeMode.light:
+      return 'Light';
+  }
+}
 
 class _TerminalToolbar extends StatelessWidget {
   const _TerminalToolbar({
@@ -262,11 +330,13 @@ class _TerminalToolbar extends StatelessWidget {
               PopupMenuItem(value: _TerminalThemeMode.morixtrem, child: Text('Morixtrem dark')),
               PopupMenuItem(value: _TerminalThemeMode.black, child: Text('Black & white')),
               PopupMenuItem(value: _TerminalThemeMode.amber, child: Text('Amber DevOps')),
+              PopupMenuItem(value: _TerminalThemeMode.dracula, child: Text('Dracula')),
+              PopupMenuItem(value: _TerminalThemeMode.light, child: Text('Light')),
             ],
           ),
           _Tool(icon: Icons.clear_all, tooltip: 'Clear terminal view', onPressed: onClear),
           const Spacer(),
-          const Text('SSH • xterm-256color', style: TextStyle(color: Colors.white54, fontSize: 11)),
+          Text('SSH • ${_themeLabel(themeMode)}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
         ],
       ),
     );
