@@ -1126,6 +1126,8 @@ class _AboutDialog extends StatelessWidget {
             SizedBox(height: 18),
             _AboutRow(label: 'Version', value: '0.1.0'),
             _AboutRow(label: 'Build', value: 'SSH · RDP · SCP'),
+            _AboutRow(label: 'Developer', value: 'mortenaho'),
+            _AboutRow(label: 'Website', value: 'mortenaho.ir'),
             SizedBox(height: 18),
             Text(
               'Connect to remote machines, manage multiple sessions, browse files, and transfer data from one focused desktop workspace.',
