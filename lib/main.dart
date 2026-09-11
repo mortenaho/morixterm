@@ -740,29 +740,33 @@ class _SessionSidebar extends StatelessWidget {
     return DragTarget<SavedSession>(
       onWillAcceptWithDetails: (details) => details.data.folder != folder,
       onAcceptWithDetails: (details) => onMoveSession(details.data, folder),
-      builder: (context, candidates, rejects) => Container(
+      builder: (context, candidates, rejects) => Material(
         color: candidates.isNotEmpty ? Moba.green.withValues(alpha: 0.28) : const Color(0xFF202020),
-        padding: const EdgeInsets.only(left: 10, right: 4, top: 5, bottom: 4),
-        child: Row(children: [
-          IconButton(
-            tooltip: collapsed ? 'Expand folder' : 'Collapse folder',
-            onPressed: () => onToggleFolder(folder ?? ''),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints.tightFor(width: 22, height: 22),
-            icon: Icon(collapsed ? Icons.chevron_right : Icons.expand_more, size: 17, color: Colors.white54),
+        child: InkWell(
+          onTap: () => onToggleFolder(folder ?? ''),
+          child: Padding(
+            padding: const EdgeInsets.only(left: 10, right: 4, top: 5, bottom: 4),
+            child: Row(children: [
+              Icon(
+                collapsed ? Icons.chevron_right : Icons.expand_more,
+                size: 20,
+                color: Colors.white70,
+              ),
+              const SizedBox(width: 2),
+              Icon(folder == null ? Icons.inbox_outlined : Icons.folder_outlined, size: 15, color: Colors.white54),
+              const SizedBox(width: 6),
+              Expanded(child: Text(folder ?? 'No folder', style: const TextStyle(fontSize: 11, color: Colors.white60))),
+              if (folder != null)
+                IconButton(
+                  tooltip: 'Delete folder',
+                  onPressed: () => onDeleteFolder(folder),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(width: 24, height: 22),
+                  icon: const Icon(Icons.more_horiz, size: 16, color: Colors.white38),
+                ),
+            ]),
           ),
-          Icon(folder == null ? Icons.inbox_outlined : Icons.folder_outlined, size: 15, color: Colors.white54),
-          const SizedBox(width: 6),
-          Expanded(child: Text(folder ?? 'No folder', style: const TextStyle(fontSize: 11, color: Colors.white60))),
-          if (folder != null)
-            IconButton(
-              tooltip: 'Delete folder',
-              onPressed: () => onDeleteFolder(folder),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints.tightFor(width: 24, height: 22),
-              icon: const Icon(Icons.more_horiz, size: 16, color: Colors.white38),
-            ),
-        ]),
+        ),
       ),
     );
   }
