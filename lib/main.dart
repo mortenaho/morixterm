@@ -1343,7 +1343,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
           TextField(controller: name, decoration: const InputDecoration(labelText: 'Session name')),
           const SizedBox(height: 14),
           DropdownButtonFormField<String?>(
-            value: folder,
+            initialValue: folder,
             decoration: const InputDecoration(labelText: 'Folder (optional)'),
             items: [
               const DropdownMenuItem<String?>(value: null, child: Text('No folder')),
