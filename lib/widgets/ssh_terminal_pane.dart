@@ -232,11 +232,6 @@ class _SshTerminalPaneState extends State<SshTerminalPane> {
           onSelectAll: _selectAll,
           onSearch: _showSearch,
           onZoom: _zoom,
-          onClear: () {
-            widget.terminal.buffer.clear();
-            _controller.clearSelection();
-            setState(() {});
-          },
           onThemeChanged: (value) => setState(() => _themeMode = value),
         ),
         Expanded(
@@ -291,7 +286,6 @@ class _TerminalToolbar extends StatelessWidget {
     required this.onSelectAll,
     required this.onSearch,
     required this.onZoom,
-    required this.onClear,
     required this.onThemeChanged,
   });
 
@@ -302,7 +296,6 @@ class _TerminalToolbar extends StatelessWidget {
   final VoidCallback onSelectAll;
   final VoidCallback onSearch;
   final void Function(int) onZoom;
-  final VoidCallback onClear;
   final ValueChanged<_TerminalThemeMode> onThemeChanged;
 
   @override
@@ -334,7 +327,6 @@ class _TerminalToolbar extends StatelessWidget {
               PopupMenuItem(value: _TerminalThemeMode.light, child: Text('Light')),
             ],
           ),
-          _Tool(icon: Icons.clear_all, tooltip: 'Clear terminal view', onPressed: onClear),
           const Spacer(),
           Text('SSH • ${_themeLabel(themeMode)}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
         ],
