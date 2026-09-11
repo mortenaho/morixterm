@@ -187,8 +187,35 @@ class _WorkspacePageState extends State<WorkspacePage> {
       showMessage('این پوشه از قبل وجود دارد');
       return;
     }
+    final previous = folders;
     setState(() => folders = {...folders, value});
-    await sessionStorage.saveFolders(folders);
+    try {
+      await sessionStorage.saveFolders(folders);
+      if (mounted) showMessage('پوشه ایجاد شد؛ session را روی آن بکشید');
+    } catch (error) {
+      if (mounted) {
+        setState(() => folders = previous);
+        showMessage('ساخت پوشه ناموفق بود: $error');
+      }
+    }
+  }
+
+  Future<void> _moveSessionToFolder(SavedSession session, String? folder) async {
+    final index = sessions.indexWhere((item) => item.sameBookmark(session));
+    if (index < 0 || sessions[index].folder == folder) return;
+    final previous = sessions;
+    final updated = [...sessions];
+    updated[index] = session.copyWith(folder: folder);
+    setState(() => sessions = updated);
+    try {
+      await sessionStorage.saveAll(updated);
+      if (mounted) showMessage(folder == null ? 'session به بخش بدون پوشه منتقل شد' : 'session به پوشهٔ $folder منتقل شد');
+    } catch (error) {
+      if (mounted) {
+        setState(() => sessions = previous);
+        showMessage('جابجایی session ناموفق بود: $error');
+      }
+    }
   }
 
   Future<void> _deleteFolder(String folder) async {
@@ -455,7 +482,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
   Future<void> _openNewSession() async {
     final result = await showDialog<({SavedSession session, String password, bool savePassword})>(
       context: context,
-      builder: (context) => _NewSessionDialog(folders: folders.toList()..sort()),
+      builder: (context) => const _NewSessionDialog(),
     );
     if (result == null || !mounted) return;
     final stored = result.savePassword ? result.session.copyWith(password: result.password) : result.session;
@@ -467,10 +494,10 @@ class _WorkspacePageState extends State<WorkspacePage> {
   Future<void> _editSession(SavedSession original) async {
     final result = await showDialog<({SavedSession session, String password, bool savePassword})>(
       context: context,
-      builder: (context) => _NewSessionDialog(initial: original, folders: folders.toList()..sort()),
+      builder: (context) => _NewSessionDialog(initial: original),
     );
     if (result == null || !mounted) return;
-    final updated = result.savePassword ? result.session.copyWith(password: result.password) : result.session.copyWith(password: null);
+    final updated = (result.savePassword ? result.session.copyWith(password: result.password) : result.session.copyWith(password: null)).copyWith(folder: original.folder);
     await _replaceSession(original, updated);
     showMessage('تنظیمات session ذخیره شد');
   }
@@ -508,6 +535,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
                   onEdit: _editSession,
                   onCreateFolder: _createFolder,
                   onDeleteFolder: _deleteFolder,
+                  onMoveSession: _moveSessionToFolder,
                 ),
                 Expanded(
                   child: Column(
@@ -640,6 +668,7 @@ class _SessionSidebar extends StatelessWidget {
     required this.onEdit,
     required this.onCreateFolder,
     required this.onDeleteFolder,
+    required this.onMoveSession,
   });
   final List<SavedSession> sessions;
   final Set<String> folders;
@@ -650,6 +679,7 @@ class _SessionSidebar extends StatelessWidget {
   final ValueChanged<SavedSession> onEdit;
   final VoidCallback onCreateFolder;
   final ValueChanged<String> onDeleteFolder;
+  final void Function(SavedSession session, String? folder) onMoveSession;
 
   @override
   Widget build(BuildContext context) {
@@ -691,59 +721,78 @@ class _SessionSidebar extends StatelessWidget {
   }
 
   Widget _folderHeader(BuildContext context, String? folder) {
-    return Container(
-      color: const Color(0xFF202020),
-      padding: const EdgeInsets.only(left: 10, right: 4, top: 5, bottom: 4),
-      child: Row(children: [
-        Icon(folder == null ? Icons.inbox_outlined : Icons.folder_outlined, size: 15, color: Colors.white54),
-        const SizedBox(width: 6),
-        Expanded(child: Text(folder ?? 'No folder', style: const TextStyle(fontSize: 11, color: Colors.white60))),
-        if (folder != null)
-          IconButton(
-            tooltip: 'Delete folder',
-            onPressed: () => onDeleteFolder(folder),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints.tightFor(width: 24, height: 22),
-            icon: const Icon(Icons.more_horiz, size: 16, color: Colors.white38),
-          ),
-      ]),
+    return DragTarget<SavedSession>(
+      onWillAcceptWithDetails: (details) => details.data.folder != folder,
+      onAcceptWithDetails: (details) => onMoveSession(details.data, folder),
+      builder: (context, candidates, rejects) => Container(
+        color: candidates.isNotEmpty ? Moba.green.withValues(alpha: 0.28) : const Color(0xFF202020),
+        padding: const EdgeInsets.only(left: 10, right: 4, top: 5, bottom: 4),
+        child: Row(children: [
+          Icon(folder == null ? Icons.inbox_outlined : Icons.folder_outlined, size: 15, color: Colors.white54),
+          const SizedBox(width: 6),
+          Expanded(child: Text(folder ?? 'No folder', style: const TextStyle(fontSize: 11, color: Colors.white60))),
+          if (folder != null)
+            IconButton(
+              tooltip: 'Delete folder',
+              onPressed: () => onDeleteFolder(folder),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 24, height: 22),
+              icon: const Icon(Icons.more_horiz, size: 16, color: Colors.white38),
+            ),
+        ]),
+      ),
     );
   }
 
   Widget _sessionTile(BuildContext context, SavedSession session, int index) {
     final selected = active != null && session.sameBookmark(active!);
     final opened = openBookmarks.any((item) => item.sameBookmark(session));
-    return InkWell(
-      onTap: () => onOpen(session),
-      mouseCursor: WidgetStateMouseCursor.clickable,
-      child: Container(
-        color: selected ? Moba.green.withValues(alpha: 0.25) : null,
-        padding: const EdgeInsets.only(left: 18, right: 4, top: 6, bottom: 6),
-        child: Row(children: [
-          Icon(session.isSsh ? Icons.terminal : Icons.desktop_windows, size: 16, color: session.isSsh ? Moba.ssh : Moba.rdp),
-          if (opened)
-            const Padding(padding: EdgeInsets.only(left: 4), child: Icon(Icons.circle, size: 7, color: Moba.green)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(session.name, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
-              Text('${session.isSsh ? 'SSH' : 'RDP'} ${session.host}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Colors.white54)),
-            ]),
-          ),
-          if (session.hasSavedPassword) const Icon(Icons.lock, size: 13, color: Colors.white38),
-          IconButton(
-            tooltip: 'Edit session',
-            visualDensity: VisualDensity.compact,
-            onPressed: () => onEdit(session),
-            icon: const Icon(Icons.edit_outlined, size: 14, color: Colors.white54),
-          ),
-          IconButton(
-            tooltip: 'Delete session',
-            visualDensity: VisualDensity.compact,
-            onPressed: () => onDelete(index),
-            icon: const Icon(Icons.close, size: 14, color: Colors.white38),
-          ),
-        ]),
+    return Draggable<SavedSession>(
+      data: session,
+      feedback: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: 220,
+          padding: const EdgeInsets.all(8),
+          color: Moba.menu,
+          child: Row(children: [
+            Icon(session.isSsh ? Icons.terminal : Icons.desktop_windows, size: 16, color: session.isSsh ? Moba.ssh : Moba.rdp),
+            const SizedBox(width: 8),
+            Expanded(child: Text(session.name, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white))),
+          ]),
+        ),
+      ),
+      child: InkWell(
+        onTap: () => onOpen(session),
+        mouseCursor: WidgetStateMouseCursor.clickable,
+        child: Container(
+          color: selected ? Moba.green.withValues(alpha: 0.25) : null,
+          padding: const EdgeInsets.only(left: 18, right: 4, top: 6, bottom: 6),
+          child: Row(children: [
+            Icon(session.isSsh ? Icons.terminal : Icons.desktop_windows, size: 16, color: session.isSsh ? Moba.ssh : Moba.rdp),
+            if (opened) const Padding(padding: EdgeInsets.only(left: 4), child: Icon(Icons.circle, size: 7, color: Moba.green)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(session.name, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
+                Text('${session.isSsh ? 'SSH' : 'RDP'} ${session.host}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Colors.white54)),
+              ]),
+            ),
+            if (session.hasSavedPassword) const Icon(Icons.lock, size: 13, color: Colors.white38),
+            IconButton(
+              tooltip: 'Edit session',
+              visualDensity: VisualDensity.compact,
+              onPressed: () => onEdit(session),
+              icon: const Icon(Icons.edit_outlined, size: 14, color: Colors.white54),
+            ),
+            IconButton(
+              tooltip: 'Delete session',
+              visualDensity: VisualDensity.compact,
+              onPressed: () => onDelete(index),
+              icon: const Icon(Icons.close, size: 14, color: Colors.white38),
+            ),
+          ]),
+        ),
       ),
     );
   }
@@ -1245,10 +1294,9 @@ class _CredentialsDialogState extends State<_CredentialsDialog> {
 }
 
 class _NewSessionDialog extends StatefulWidget {
-  const _NewSessionDialog({this.initial, this.folders = const []});
+  const _NewSessionDialog({this.initial});
 
   final SavedSession? initial;
-  final List<String> folders;
 
   @override
   State<_NewSessionDialog> createState() => _NewSessionDialogState();
@@ -1261,7 +1309,6 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
   final user = TextEditingController();
   final port = TextEditingController(text: '3389');
   final password = TextEditingController();
-  String? folder;
   bool showPassword = false;
   late bool savePassword;
 
@@ -1275,7 +1322,6 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
     user.text = initial?.username ?? '';
     port.text = '${initial?.port ?? (protocol == SessionProtocol.ssh ? 22 : 3389)}';
     password.text = initial?.password ?? '';
-    folder = initial?.folder;
     savePassword = initial?.hasSavedPassword ?? true;
   }
 
@@ -1315,7 +1361,6 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
         port: int.tryParse(port.text) ?? (protocol == SessionProtocol.ssh ? 22 : 3389),
         username: user.text.trim(),
         protocol: protocol,
-        folder: folder,
       ),
       password: password.text,
       savePassword: savePassword,
@@ -1341,16 +1386,6 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
           TextField(controller: host, decoration: const InputDecoration(labelText: 'Host')),
           const SizedBox(height: 14),
           TextField(controller: name, decoration: const InputDecoration(labelText: 'Session name')),
-          const SizedBox(height: 14),
-          DropdownButtonFormField<String?>(
-            initialValue: folder,
-            decoration: const InputDecoration(labelText: 'Folder (optional)'),
-            items: [
-              const DropdownMenuItem<String?>(value: null, child: Text('No folder')),
-              ...widget.folders.map((item) => DropdownMenuItem<String?>(value: item, child: Text(item))),
-            ],
-            onChanged: (value) => setState(() => folder = value),
-          ),
           const SizedBox(height: 14),
           TextField(controller: user, decoration: const InputDecoration(labelText: 'Username')),
           const SizedBox(height: 14),
