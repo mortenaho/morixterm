@@ -48,7 +48,7 @@ class MorixtremWordmark extends StatelessWidget {
                 ),
               ),
               TextSpan(
-                text: 'xtrem',
+                text: 'xterm',
                 style: TextStyle(
                   fontWeight: FontWeight.w400,
                   fontSize: titleSize,

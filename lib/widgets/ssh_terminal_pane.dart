@@ -265,7 +265,7 @@ enum _TerminalThemeMode { morixtrem, black, amber, dracula, light }
 String _themeLabel(_TerminalThemeMode mode) {
   switch (mode) {
     case _TerminalThemeMode.morixtrem:
-      return 'Morixtrem';
+      return 'Morixterm';
     case _TerminalThemeMode.black:
       return 'Black & white';
     case _TerminalThemeMode.amber:
@@ -320,7 +320,7 @@ class _TerminalToolbar extends StatelessWidget {
             initialValue: themeMode,
             onSelected: onThemeChanged,
             itemBuilder: (context) => const [
-              PopupMenuItem(value: _TerminalThemeMode.morixtrem, child: Text('Morixtrem dark')),
+              PopupMenuItem(value: _TerminalThemeMode.morixtrem, child: Text('Morixterm dark')),
               PopupMenuItem(value: _TerminalThemeMode.black, child: Text('Black & white')),
               PopupMenuItem(value: _TerminalThemeMode.amber, child: Text('Amber DevOps')),
               PopupMenuItem(value: _TerminalThemeMode.dracula, child: Text('Dracula')),

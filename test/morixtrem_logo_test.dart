@@ -11,6 +11,6 @@ void main() {
     );
 
     expect(find.byType(MorixtremLogo), findsOneWidget);
-    expect(find.textContaining('morixtrem'), findsOneWidget);
+    expect(find.textContaining('morixterm'), findsOneWidget);
   });
 }

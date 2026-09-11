@@ -20,7 +20,7 @@ String sshWelcomeBanner({
 
   return '''
 ${border}╭────────────────────────────────────────────────────────────────────────╮${reset}
-${border}│${reset} ${cyan}◆${reset} ${white}MORI${cyan}XTREM${reset}                                      ${green}● CONNECTED${reset} ${border}│${reset}
+${border}│${reset} ${cyan}◆${reset} ${white}MORI${cyan}XTERM${reset}                                      ${green}● CONNECTED${reset} ${border}│${reset}
 ${border}│${reset}   ${dim}Remote workspace · SSH terminal${reset}                         ${muted}v1.0.0${reset} ${border}│${reset}
 ${border}├────────────────────────────────────────────────────────────────────────┤${reset}
 ${border}│${reset}  ${muted}SESSION${reset}                                                            ${border}│${reset}

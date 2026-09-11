@@ -1113,7 +1113,7 @@ class _AboutDialog extends StatelessWidget {
         children: [
           MorixtremLogo(size: 42),
           SizedBox(width: 12),
-          Text('morixtrem', style: TextStyle(fontWeight: FontWeight.w700)),
+          Text('morixterm', style: TextStyle(fontWeight: FontWeight.w700)),
         ],
       ),
       content: const SizedBox(

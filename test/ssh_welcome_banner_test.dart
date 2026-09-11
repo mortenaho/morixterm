@@ -11,7 +11,7 @@ void main() {
     );
 
     expect(banner, contains('MORI'));
-    expect(banner, contains('XTREM'));
+    expect(banner, contains('XTERM'));
     expect(banner, contains('v1.0.0'));
     expect(banner, contains('alice@example.com'));
     expect(banner, contains('on port 2222'));
