@@ -1,6 +1,8 @@
 enum SessionProtocol { rdp, ssh }
 
 class SavedSession {
+  static const _unset = Object();
+
   const SavedSession({
     required this.name,
     required this.host,
@@ -8,6 +10,7 @@ class SavedSession {
     required this.username,
     this.protocol = SessionProtocol.rdp,
     this.password = '',
+    this.folder,
   });
 
   final String name;
@@ -16,12 +19,13 @@ class SavedSession {
   final String username;
   final SessionProtocol protocol;
   final String password;
+  final String? folder;
 
   bool get isSsh => protocol == SessionProtocol.ssh;
   bool get hasSavedPassword => password.isNotEmpty;
 
   bool sameBookmark(SavedSession other) =>
-      name == other.name && host == other.host && port == other.port && protocol == other.protocol;
+      name == other.name && host == other.host && port == other.port && username == other.username && protocol == other.protocol;
 
   SavedSession copyWith({
     String? name,
@@ -30,6 +34,7 @@ class SavedSession {
     String? username,
     SessionProtocol? protocol,
     String? password,
+    Object? folder = _unset,
   }) {
     return SavedSession(
       name: name ?? this.name,
@@ -38,16 +43,18 @@ class SavedSession {
       username: username ?? this.username,
       protocol: protocol ?? this.protocol,
       password: password ?? this.password,
+      folder: identical(folder, _unset) ? this.folder : folder as String?,
     );
   }
 
-  Map<String, Object> toJson() => {
+  Map<String, Object?> toJson() => {
         'name': name,
         'host': host,
         'port': port,
         'username': username,
         'protocol': protocol.name,
         'password': password,
+        'folder': folder,
       };
 
   factory SavedSession.fromJson(Map<String, dynamic> json) {
@@ -59,6 +66,7 @@ class SavedSession {
       username: json['username'] as String? ?? '',
       protocol: protocolName == 'ssh' ? SessionProtocol.ssh : SessionProtocol.rdp,
       password: json['password'] as String? ?? '',
+      folder: (json['folder'] as String?)?.trim().isEmpty == true ? null : json['folder'] as String?,
     );
   }
 }
