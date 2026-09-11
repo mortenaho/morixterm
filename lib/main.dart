@@ -431,11 +431,6 @@ class _WorkspacePageState extends State<WorkspacePage> {
       backgroundColor: Moba.bg,
       body: Column(
         children: [
-          _MenuBar(
-            onSession: _openNewSession,
-            onFiles: _openFilesPane,
-            onDisconnect: hasLiveSession ? _disconnect : null,
-          ),
           _ToolBar(
             onSession: _openNewSession,
             onFiles: _openFilesPane,
@@ -516,42 +511,6 @@ class _WorkspacePageState extends State<WorkspacePage> {
           _StatusBar(snapshot: current, live: hasLiveSession),
         ],
       ),
-    );
-  }
-}
-
-class _MenuBar extends StatelessWidget {
-  const _MenuBar({required this.onSession, required this.onFiles, this.onDisconnect});
-  final VoidCallback onSession;
-  final VoidCallback onFiles;
-  final VoidCallback? onDisconnect;
-
-  @override
-  Widget build(BuildContext context) {
-    Widget item(String label, VoidCallback? onTap) => InkWell(
-          onTap: onTap,
-          mouseCursor: WidgetStateMouseCursor.clickable,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            child: Text(label, style: const TextStyle(fontSize: 13)),
-          ),
-        );
-    return Container(
-      height: 28,
-      color: Moba.menu,
-      child: Row(children: [
-        const Padding(
-          padding: EdgeInsets.only(left: 8, right: 4),
-          child: MorixtremLogo(size: 16, showShadow: false),
-        ),
-        item('Session', onSession),
-        item('View', () {}),
-        item('Settings', () {}),
-        item('Tools', onFiles),
-        item('Help', () {}),
-        const Spacer(),
-        if (onDisconnect != null) item('Disconnect', onDisconnect),
-      ]),
     );
   }
 }
