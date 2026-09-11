@@ -6,6 +6,7 @@ import '../models/saved_session.dart';
 
 class SessionStorage {
   static const _key = 'saved_rdp_sessions';
+  static const _foldersKey = 'saved_rdp_session_folders';
 
   Future<List<SavedSession>> load() async {
     final preferences = await SharedPreferences.getInstance();
@@ -16,5 +17,16 @@ class SessionStorage {
   Future<void> saveAll(List<SavedSession> sessions) async {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setStringList(_key, sessions.map((session) => jsonEncode(session.toJson())).toList());
+  }
+
+  Future<List<String>> loadFolders() async {
+    final preferences = await SharedPreferences.getInstance();
+    return (preferences.getStringList(_foldersKey) ?? <String>[]).where((item) => item.trim().isNotEmpty).toList();
+  }
+
+  Future<void> saveFolders(Iterable<String> folders) async {
+    final preferences = await SharedPreferences.getInstance();
+    final values = folders.map((item) => item.trim()).where((item) => item.isNotEmpty).toSet().toList()..sort();
+    await preferences.setStringList(_foldersKey, values);
   }
 }
