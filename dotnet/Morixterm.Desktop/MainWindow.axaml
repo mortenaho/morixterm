@@ -1,4 +1,5 @@
 <Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:models="using:Morixterm.Desktop.Models"
         x:Class="Morixterm.Desktop.MainWindow" Width="1280" Height="760" MinWidth="960" MinHeight="600"
         Title="Morixterm" Background="#202124">
   <Grid RowDefinitions="64,*,28">
@@ -24,7 +25,7 @@
           </StackPanel>
           <ListBox Name="SessionList" Margin="8,0,8,12" DoubleTapped="OpenSession">
             <ListBox.ItemTemplate>
-              <DataTemplate>
+              <DataTemplate x:DataType="models:SavedSession">
                 <Border Padding="9" Margin="0,2" CornerRadius="4">
                   <Grid ColumnDefinitions="28,*,Auto" RowDefinitions="Auto,Auto">
                     <TextBlock Grid.RowSpan="2" Text="{Binding ProtocolLabel}" FontSize="10" Foreground="#e6b422" VerticalAlignment="Center" />
@@ -65,7 +66,7 @@
             </Border>
             <TextBox Grid.Row="1" Name="TerminalOutput" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
                      Background="#0c0c0c" Foreground="#e4e4e4" FontFamily="Cascadia Mono, DejaVu Sans Mono" FontSize="13"
-                     Padding="18" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" />
+                     Padding="18" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto" />
             <TextBox Grid.Row="2" Name="TerminalInput" Watermark="Type a command and press Enter…" KeyDown="TerminalKeyDown" Margin="10" />
           </Grid>
           <Grid Name="FilesPane" IsVisible="False" Background="#202124" RowDefinitions="Auto,*">
