@@ -11,7 +11,6 @@ void main() {
     );
 
     expect(find.byType(RdpDeskLogo), findsOneWidget);
-    expect(find.textContaining('RDP'), findsOneWidget);
-    expect(find.textContaining('Desk'), findsOneWidget);
+    expect(find.textContaining('morixtrem'), findsOneWidget);
   });
 }
