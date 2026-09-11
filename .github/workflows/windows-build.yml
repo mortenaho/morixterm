@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build-windows:
-    name: Build morixtrem for Windows
+    name: Build morixterm for Windows
     runs-on: windows-latest
 
     steps:
@@ -32,9 +32,9 @@ jobs:
         shell: pwsh
         run: flutter create --platforms=windows .
 
-      - name: Apply morixtrem Windows icon
+      - name: Apply morixterm Windows icon
         shell: pwsh
-        run: Copy-Item -Force assets/morixtrem.ico windows/runner/resources/app_icon.ico
+        run: Copy-Item -Force assets/morixterm.ico windows/runner/resources/app_icon.ico
 
       - name: Install dependencies
         run: flutter pub get
@@ -52,7 +52,7 @@ jobs:
         shell: pwsh
         run: |
           $artifactDirectory = "build/windows/x64/runner/Release"
-          $archivePath = "morixtrem-windows-${{ github.sha }}.zip"
+          $archivePath = "morixterm-windows-${{ github.sha }}.zip"
           if (-not (Test-Path $artifactDirectory)) {
             throw "Windows build output was not found at $artifactDirectory"
           }
@@ -61,12 +61,12 @@ jobs:
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: morixtrem-windows-${{ github.sha }}
-          path: morixtrem-windows-${{ github.sha }}.zip
+          name: morixterm-windows-${{ github.sha }}
+          path: morixterm-windows-${{ github.sha }}.zip
           if-no-files-found: error
 
   build-linux:
-    name: Build morixtrem Debian package
+    name: Build morixterm Debian package
     runs-on: ubuntu-latest
 
     steps:
@@ -103,27 +103,27 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          package_root="$RUNNER_TEMP/morixtrem-deb"
+          package_root="$RUNNER_TEMP/morixterm-deb"
           bundle_dir="build/linux/x64/release/bundle"
           version="0.1.0-${GITHUB_RUN_NUMBER}"
-          deb_name="morixtrem_${version}_amd64.deb"
+          deb_name="morixterm_${version}_amd64.deb"
 
           test -d "$bundle_dir"
-          mkdir -p "$package_root/DEBIAN" "$package_root/usr/lib/morixtrem" \
+          mkdir -p "$package_root/DEBIAN" "$package_root/usr/lib/morixterm" \
             "$package_root/usr/share/applications" "$package_root/usr/share/icons/hicolor/256x256/apps"
-          cp -a "$bundle_dir/." "$package_root/usr/lib/morixtrem/"
+          cp -a "$bundle_dir/." "$package_root/usr/lib/morixterm/"
           cp packaging/deb/DEBIAN/control "$package_root/DEBIAN/control"
           sed -i "s/^Version:.*/Version: ${version}/" "$package_root/DEBIAN/control"
-          cp packaging/deb/usr/share/applications/morixtrem.desktop \
-            "$package_root/usr/share/applications/morixtrem.desktop"
-          cp assets/logo.png "$package_root/usr/share/icons/hicolor/256x256/apps/morixtrem.png"
+          cp packaging/deb/usr/share/applications/morixterm.desktop \
+            "$package_root/usr/share/applications/morixterm.desktop"
+          cp assets/logo.png "$package_root/usr/share/icons/hicolor/256x256/apps/morixterm.png"
           dpkg-deb --build "$package_root" "$deb_name"
 
       - name: Upload Debian artifact
         uses: actions/upload-artifact@v4
         with:
-          name: morixtrem-debian-${{ github.sha }}
-          path: morixtrem_*_amd64.deb
+          name: morixterm-debian-${{ github.sha }}
+          path: morixterm_*_amd64.deb
           if-no-files-found: error
 
   publish-release:
@@ -136,7 +136,7 @@ jobs:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: morixtrem-*
+          pattern: morixterm-*
           path: release-assets
           merge-multiple: true
 
@@ -147,6 +147,6 @@ jobs:
           gh release create "v0.1.0-build.${{ github.run_number }}" \
             release-assets/* \
             --repo "${{ github.repository }}" \
-            --title "morixtrem v0.1.0 build ${{ github.run_number }}" \
+            --title "morixterm v0.1.0 build ${{ github.run_number }}" \
             --generate-notes \
             --prerelease

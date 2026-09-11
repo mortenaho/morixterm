@@ -1,0 +1,17 @@
+
+===== SSH Linux SSH localhost:2222 user=test @ 2026-09-11T23:59:19.298732 =====
+[2026-09-11T23:59:20.942451] SSH debug: SSHTransport._strictKex = true
+SSH-2.0-OpenSSH_10.3"
+-etm@openssh.com)
+[2026-09-11T23:59:21.040536] SSH debug: SSHClient._onTransportReady
+edPacket
+, 58, 49, 112, 115, 120, 51, 87, 77, 50, 85, 90, 119, 84, 77, 88, 83, 57, 43, 118, 100, 55, 76, 76, 100, 109, 117, 113, 65, 112, 56, 85, 66, 82, 122, 50, 51, 48, 75, 48, 49, 83, 116, 111, 119]
+[2026-09-11T23:59:21.076460] SSH debug: SSHTransport._processPackets
+ethod.password
+[2026-09-11T23:59:21.115888] SSH debug: SSHTransport._consumeEncryptedPacket
+[2026-09-11T23:59:21.157519] SSH debug: SSHTransport._consumeEncryptedPacket
+[2026-09-11T23:59:21.241136] SSH debug: SSHTransport._consumeEncryptedPacket
+
+ 2[2026-0[2026-09-11T23:59:21.251315] SSH debug: SSHChannel._handleDataMessage: [2026-09-11T23:59:21.254655] SSH debug: SSHTransport._consumeEncryptedPacket
+
+[2026-09-11T23:59:21.843186] SSH debug: SSHChannel._handleDataMessage: len=69

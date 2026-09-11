@@ -7,12 +7,12 @@
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:morixtrem/main.dart';
+import 'package:morixterm/main.dart';
 
 void main() {
-  testWidgets('morixtrem app starts successfully', (WidgetTester tester) async {
-    await tester.pumpWidget(const MorixtremApp());
+  testWidgets('morixterm app starts successfully', (WidgetTester tester) async {
+    await tester.pumpWidget(const MorixtermApp());
 
-    expect(find.byType(MorixtremApp), findsOneWidget);
+    expect(find.byType(MorixtermApp), findsOneWidget);
   });
 }

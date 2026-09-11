@@ -1,4 +1,4 @@
-name: morixtrem
+name: morixterm
 description: A focused Flutter desktop client for RDP sessions and file transfer.
 publish_to: 'none'
 version: 0.1.0+1
@@ -24,4 +24,5 @@ flutter:
   uses-material-design: true
   assets:
     - assets/logo.png
+    - assets/morixterm-mark.png
     - assets/wordmark.png

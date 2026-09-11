@@ -11,6 +11,7 @@ import '../models/remote_entry.dart';
 import '../models/saved_session.dart';
 import 'app_log.dart';
 import 'scp_transfer.dart';
+import 'ssh_welcome_banner.dart';
 
 class SshConnectionRequest {
   const SshConnectionRequest({
@@ -117,6 +118,12 @@ class SshSessionService {
       terminal.onResize = shell.resizeTerminal;
       _stdoutSub = shell.stdout.listen(_writeToTerminal);
       _stderrSub = shell.stderr.listen(_writeToTerminal);
+      terminal.write(sshWelcomeBanner(
+        username: request.username.trim(),
+        host: endpoint.host,
+        port: endpoint.port,
+      ));
+      _enableSessionColors(shell);
       shell.done.then((_) {
         if (!_stopping && _snapshot.phase == ConnectionPhase.connected) {
           _emit(const ConnectionSnapshot(phase: ConnectionPhase.idle));
@@ -145,6 +152,20 @@ class SshSessionService {
       await _closeRemote();
       throw SshException(message);
     }
+  }
+
+  void _enableSessionColors(SSHSession shell) {
+    // Apply styling only to this shell process; nothing is written to the
+    // remote user's profile or persisted on the server.
+    const command = r'''if [ -n "$BASH_VERSION" ]; then
+PS1='\[\e[38;5;51m\]\u\[\e[0m\]@\[\e[38;5;141m\]\h\[\e[0m\]:\[\e[38;5;82m\]\w\[\e[0m\]\$ ';
+elif [ -n "$ZSH_VERSION" ]; then
+PROMPT='%F{cyan}%n%f@%F{magenta}%m%f:%F{green}%~%f %# ';
+fi
+alias ls='ls --color=auto'
+alias ll='ls -lah --color=auto'
+''';
+    shell.write(Uint8List.fromList(utf8.encode('$command\n')));
   }
 
   Future<void> disconnect() async {
@@ -223,14 +244,14 @@ class SshSessionService {
     final endpoint = parseEndpoint(request.host, request.port);
     final destDir = remoteDir.isEmpty || remoteDir == '.' ? '~/' : (remoteDir.endsWith('/') ? remoteDir : '$remoteDir/');
     final dest = '${request.username.trim()}@${endpoint.host}:${_scpQuote(destDir)}';
-    final work = await Directory.systemTemp.createTemp('morixtrem-scp-');
+    final work = await Directory.systemTemp.createTemp('morixterm-scp-');
     final askpass = File('${work.path}/askpass');
-    await askpass.writeAsString('#!/bin/sh\nprintf %s "\$MORIXTREM_SSH_PASS"\n');
+    await askpass.writeAsString('#!/bin/sh\nprintf %s "\$MORIXTERM_SSH_PASS"\n');
     await Process.run('chmod', ['700', askpass.path]);
     try {
       final environment = Map<String, String>.from(Platform.environment);
       if (request.password.isNotEmpty) {
-        environment['MORIXTREM_SSH_PASS'] = request.password;
+        environment['MORIXTERM_SSH_PASS'] = request.password;
         environment['SSH_ASKPASS'] = askpass.path;
         environment['SSH_ASKPASS_REQUIRE'] = 'force';
         environment['DISPLAY'] = environment['DISPLAY'] ?? ':0';
