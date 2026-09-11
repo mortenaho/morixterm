@@ -1104,62 +1104,163 @@ class _AboutDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: Moba.panel,
-      titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-      contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
-      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      title: const Row(
-        children: [
-          MorixtremLogo(size: 42),
-          SizedBox(width: 12),
-          Text('morixterm', style: TextStyle(fontWeight: FontWeight.w700)),
-        ],
-      ),
-      content: const SizedBox(
-        width: 420,
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      child: Container(
+        width: 520,
+        decoration: BoxDecoration(
+          color: Moba.panel,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0x335B9BD5)),
+          boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 28, offset: Offset(0, 14))],
+        ),
+        clipBehavior: Clip.antiAlias,
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Remote workspace, simplified.', style: TextStyle(color: Colors.white70)),
-            SizedBox(height: 18),
-            _AboutRow(label: 'Version', value: '0.1.0'),
-            _AboutRow(label: 'Build', value: 'SSH · RDP · SCP'),
-            _AboutRow(label: 'Developer', value: 'mortenaho'),
-            _AboutRow(label: 'Website', value: 'mortenaho.ir'),
-            SizedBox(height: 18),
-            Text(
-              'Connect to remote machines, manage multiple sessions, browse files, and transfer data from one focused desktop workspace.',
-              style: TextStyle(height: 1.45, color: Colors.white60),
+            Container(
+              padding: const EdgeInsets.fromLTRB(24, 22, 16, 20),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF263C58), Color(0xFF302640)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: Row(
+                children: [
+                  const MorixtremLogo(size: 68),
+                  const SizedBox(width: 16),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('morixterm', style: TextStyle(fontSize: 25, fontWeight: FontWeight.w700, letterSpacing: 0.4)),
+                        SizedBox(height: 5),
+                        Text('Remote workspace, simplified.', style: TextStyle(color: Colors.white70)),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(20)),
+                    child: const Text('v0.1.0', style: TextStyle(color: Colors.white, fontSize: 12)),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 22, 24, 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('About this workspace', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white70)),
+                  const SizedBox(height: 12),
+                  const Row(
+                    children: [
+                      Expanded(child: _AboutInfoTile(icon: Icons.person_outline, label: 'Developer', value: 'mortenaho')),
+                      SizedBox(width: 10),
+                      Expanded(child: _AboutInfoTile(icon: Icons.language, label: 'Website', value: 'mortenaho.ir')),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  const Text('Built-in capabilities', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white70)),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: const [
+                      _AboutChip(icon: Icons.terminal, label: 'SSH terminal'),
+                      _AboutChip(icon: Icons.desktop_windows_outlined, label: 'RDP sessions'),
+                      _AboutChip(icon: Icons.folder_outlined, label: 'SCP file transfer'),
+                      _AboutChip(icon: Icons.palette_outlined, label: 'Terminal themes'),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'Connect to remote machines, manage multiple sessions, browse files, and transfer data from one focused desktop workspace.',
+                    style: TextStyle(height: 1.45, color: Colors.white54),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.fromLTRB(24, 12, 18, 12),
+              decoration: const BoxDecoration(color: Color(0x22101010)),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+                ],
+              ),
             ),
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Close'),
-        ),
-      ],
     );
   }
 }
 
-class _AboutRow extends StatelessWidget {
-  const _AboutRow({required this.label, required this.value});
+class _AboutInfoTile extends StatelessWidget {
+  const _AboutInfoTile({required this.icon, required this.label, required this.value});
 
+  final IconData icon;
   final String label;
   final String value;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0x1AFFFFFF),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0x1FFFFFFF)),
+      ),
       child: Row(
         children: [
-          SizedBox(width: 76, child: Text(label, style: const TextStyle(color: Colors.white54))),
-          Text(value, style: const TextStyle(color: Colors.white)),
+          Icon(icon, size: 18, color: Moba.green),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(fontSize: 11, color: Colors.white54)),
+                const SizedBox(height: 3),
+                Text(value, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AboutChip extends StatelessWidget {
+  const _AboutChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0x142E90FA),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0x334A90E2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.check_circle_outline, size: 15, color: Moba.green),
+          const SizedBox(width: 6),
+          Icon(icon, size: 15, color: Colors.white70),
+          const SizedBox(width: 6),
+          Text(label, style: const TextStyle(fontSize: 12, color: Colors.white70)),
         ],
       ),
     );
