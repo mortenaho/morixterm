@@ -11,8 +11,8 @@ import 'package:morixtrem/main.dart';
 
 void main() {
   testWidgets('morixtrem app starts successfully', (WidgetTester tester) async {
-    await tester.pumpWidget(const RdpDeskApp());
+    await tester.pumpWidget(const MorixtremApp());
 
-    expect(find.byType(RdpDeskApp), findsOneWidget);
+    expect(find.byType(MorixtremApp), findsOneWidget);
   });
 }

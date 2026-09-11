@@ -225,12 +225,12 @@ class SshSessionService {
     final dest = '${request.username.trim()}@${endpoint.host}:${_scpQuote(destDir)}';
     final work = await Directory.systemTemp.createTemp('morixtrem-scp-');
     final askpass = File('${work.path}/askpass');
-    await askpass.writeAsString('#!/bin/sh\nprintf %s "\$RDP_DESK_SSH_PASS"\n');
+    await askpass.writeAsString('#!/bin/sh\nprintf %s "\$MORIXTREM_SSH_PASS"\n');
     await Process.run('chmod', ['700', askpass.path]);
     try {
       final environment = Map<String, String>.from(Platform.environment);
       if (request.password.isNotEmpty) {
-        environment['RDP_DESK_SSH_PASS'] = request.password;
+        environment['MORIXTREM_SSH_PASS'] = request.password;
         environment['SSH_ASKPASS'] = askpass.path;
         environment['SSH_ASKPASS_REQUIRE'] = 'force';
         environment['DISPLAY'] = environment['DISPLAY'] ?? ':0';

@@ -1,7 +1,7 @@
 import 'package:flutter/services.dart';
 
 class FileTransferService {
-  FileTransferService({MethodChannel? channel}) : _channel = channel ?? const MethodChannel('rdpdesk/windows_rdp');
+  FileTransferService({MethodChannel? channel}) : _channel = channel ?? const MethodChannel('morixtrem/windows_rdp');
 
   final MethodChannel _channel;
 
