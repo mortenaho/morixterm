@@ -114,7 +114,7 @@ jobs:
           cp -a "$bundle_dir/." "$package_root/usr/lib/morixterm/"
           cp packaging/deb/DEBIAN/control "$package_root/DEBIAN/control"
           sed -i "s/^Version:.*/Version: ${version}/" "$package_root/DEBIAN/control"
-          cp packaging/deb/usr/share/applications/morixterm.desktop \
+          cp packaging/deb/usr/share/applications/morixtrem.desktop \
             "$package_root/usr/share/applications/morixterm.desktop"
           cp assets/logo.png "$package_root/usr/share/icons/hicolor/256x256/apps/morixterm.png"
           dpkg-deb --build "$package_root" "$deb_name"
