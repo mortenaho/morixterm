@@ -1,0 +1,171 @@
+
+===== SSH testde localhost:2222 user=test @ 2026-09-12T22:22:07.153905 =====
+[2026-09-12T22:22:08.918711] SSH debug: SSHTransport._strictKex = true
+ostkeyType(ssh-ed25519)
+m@openssh.com)
+
+[2026-09-12T22:22:09.019700] SSH debug: SSHTransport.onVerifyHostKey = true
+4, 58, 49, 112, 115, 120, 51, 87, 77, 50, 85, 90, 119, 84, 77, 88, 83, 57, 43, 118, 100, 55, 76, 76, 100, 109, 117, 113, 65, 112, 56, 85, 66, 82, 122, 50, 51, 48, 75, 48, 49, 83, 116, 111, 119]
+[2026-09-12T22:22:09.067076] SSH debug: SSHClient._authWithPassword
+on
+hod.password
+[2026-09-12T22:22:09.112488] SSH debug: SSHTransport._consumeEncryptedPacket
+[2026-09-12T22:22:09.155466] SSH debug: SSHTransport._processPackets
+dPacket
+[2026-09-12T22:22:09.217420] SSH debug: SSHChannel._handleWindowAdjustMessage: 2[2026-0[2026-09-12T22:22:09.271465] SSH debug: SSHTransport._consumeEncryptedPac[2026-09-12T22:22:09.273052] SSH debug: SSHChannel._handleDataMessage: len=1
+
+[2026-09-12T22:22:10.110614] SSH debug: SSHChannel._handleDataMessage: len=7
+
+[2026-09-12T22:22:16.274607] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+
+[2026-09-12T22:22:16.365704] SSH debug: SSHTransport._consumeEncryptedPacket
+
+[2026-09-12T22:22:16.528526] SSH debug: SSHChannel._handleDataMessage: len=11
+[2026-09-12T22:22:17.103384] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:17.108338] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+[2026-09-12T22:22:17.194133] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:17.199433] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+[2026-09-12T22:22:17.290680] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:17.295802] SSH debug: SSHChannel._handleDataMessage: len=11
+[2026-09-12T22:22:17.308996] SSH debug: SSHChannel._handleDataMessage: len=16
+
+[2026-09-12T22:22:18.767094] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+[2026-09-12T22:22:18.914576] SSH debug: SSHChannel._uploadLoop: len=3
+Packet
+
+[2026-09-12T22:22:19.072741] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+
+[2026-09-12T22:22:25.354748] files pane focused=testde ssh=true rdp=false
+[2026-09-12T22:22:25.520205] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+[2026-09-1[2026-09-12T22:22:25.523628] SSH debug: SSHChannel._sendEOFIfNeeded
+edPacket
+s
+[2026-09-12T22:22:25.634486] SSH debug: SSHTransport._consumeEncrypte[2026-09[2026-09-12T22:22:25.635916] SSH debug: SSHChannel._sendEOFIfNeeded
+edPacket
+s
+[2026-09-12T22:22:29.089907] SSH debug: SSHTransport._processPackets
+dPacket
+[2026-09-12T22:22:39.522668] SSH debug: SSHChannel._handleDataMessage: len=4
+[2026-09-12T22:22:39.665662] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:39.671397] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+[2026-09-12T22:22:39.880391] SSH debug: SSHTransport._consumeEncryptedPacket
+[2026-09-12T22:22:40.375301] SSH debug: SSHChannel._uploadLoop: len=1
+Needed
+[2026-09-12T22:22:40.415944] SSH debug: SSHTransport._consumeEncryptedPacket
+[2026-09-12T22:22:40.455086] SSH debug: SSHChannel._handleDataMessage: len=4
+[2026-09-12T22:22:40.479619] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:40.485307] SSH debug: SSHChannel._handleDataMessage: len=4
+[2026-09-12T22:22:40.508355] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:40.516347] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+[2026-09-12T22:22:40.527353] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:40.544486] SSH debug: SSHChannel._handleDataMessage: len=4
+[2026-09-12T22:22:40.569988] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:40.578735] SSH debug: SSHChannel._handleDataMessage: len=4
+[2026-09-12T22:22:40.604906] SSH debug: SSHChannel._handleDataMessage:[2026-09-12T22:22:40.605031] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+[2026-09-12T22:22:40.629978] SSH debug: SSHTransport._processPackets
+
+[2026-09-12T22:22:40.630621] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+[2026-09-12T22:22:40.657487] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:40.664501] SSH debug: SSHTransport._consumeEncryptedPacket
+[2026-09-12T22:22:40.685883] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:40.695185] SSH debug: SSHTransport._processPackets
+fNeeded
+[2026-09-12T22:22:40.721186] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+[2026-09-12T22:22:40.742537] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+[2026-09-12T22:22:40.777115] SSH debug: SSHTransport._processPackets
+: len=4
+[2026-09-12T22:22:40.799990] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:40.803772] SSH debug: SSHTransport._processPackets
+dPacket
+[2026-09-12T22:22:40.837866] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:40.847777] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+[2026-09-12T22:22:40.854647] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:40.871850] SSH debug: SSHTransport._processPackets
+dPacket
+[2026-09-12T22:22:40.890256] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:40.894381] SSH debug: SSHTransport._consumeEncryptedPacket
+[2026-09-12T22:22:40.943029] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:40.950353] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+[2026-09-12T22:22:40.972931] SSH debug: SSHTransport._processPackets
+: len=4
+[2026-09-12T22:22:40.992515] SSH debug: SSHTransport._consumeEncrypted[2026-09-12T22:22:40.992937] SSH debug: SSHChannel._handleDataMessage: len=4
+[2026-09-12T22:22:41.017238] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:41.021755] SSH debug: SSHTransport._consumeEncryptedPacket
+[2026-09-12T22:22:41.033062] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:41.038331] SSH debug: SSHTransport._processPackets
+: len=4
+[2026-09-12T22:22:41.063696] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:41.068600] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+[2026-09-12T22:22:41.154745] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:41.162926] SSH debug: SSHTransport._consumeEncryptedPacket
+[2026-09-12T22:22:41.190027] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:41.198542] SSH debug: SSHChannel._handleDataMessage: len=1
+[2026-09-12T22:22:41.223350] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:41.232207] SSH debug: SSHTransport._consumeEncryptedPacket
+[2026-09-12T22:22:41.247386] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:41.260599] SSH debug: SSHTransport._processPackets
+: len=1
+[2026-09-12T22:22:41.286440] SSH debug: SSHTransport._processPackets
+: len=1
+[2026-09-12T22:22:41.287439] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+[2026-09-12T22:22:41.310087] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:41.314676] SSH debug: SSHChannel._handleDataMessage: len=1
+[2026-09-12T22:22:41.591291] SSH debug: SSHTransport._processPackets
+fNeeded
+
+[2026-09-12T22:22:41.760673] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+
+[2026-09-12T22:22:41.909603] SSH debug: SSHTransport._consumeEncryptedPacket
+
+[2026-09-12T22:22:42.073062] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+
+[2026-09-12T22:22:42.223214] SSH debug: SSHChannel._handleDataMessage: len=33
+[2026-09-12T22:22:42.380043] SSH debug: SSHChannel._handleDataMessage: len=83
+[2026-09-12T22:22:42.536075] SSH debug: SSHChannel._handleDataMessage:[2026-09-12T22:22:42.540443] SSH debug: SSHChannel._handleDataMessage: len=10
+[2026-09-12T22:22:42.681312] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:42.689321] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+
+[2026-09-12T22:22:42.836035] SSH debug: SSHChannel._handleDataMessage: len=1
+
+[2026-09-12T22:22:42.961557] SSH debug: SSHChannel._sendWindowAdjustIf[2026-09-12T22:22:42.964162] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+
+[2026-09-12T22:22:44.679516] SSH debug: SSHTransport._processPackets
+: len=1
+[2026-09-12T22:22:44.807490] SSH debug: SSHTransport._consumeEncryptedPacket
+[2026-09-12T22:22:44.949093] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+[2026-09-12T22:22:45.102755] SSH debug: SSHTransport._consumeEncryptedPacket
+[2026-09-12T22:22:45.292654] SSH debug: SSHTransport._processPackets
+: len=1
+[2026-09-12T22:22:45.668032] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:45.672889] SSH debug: SSHTransport._consumeEncryptedPacket
+[2026-09-12T22:22:45.680423] SSH debug: SSHChannel._handleDataMessage: len=62
+[2026-09-12T22:22:48.771480] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:48.783447] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+
+[2026-09-12T22:22:48.965878] SSH debug: SSHTransport._consumeEncrypted[2026-09-12T22:22:48.966829] SSH debug: SSHTransport._consumeEncryptedPacket
+
+[2026-09-12T22:22:49.088041] SSH debug: SSHTransport._consumeEncryptedPacket
+[2026-09-12T22:22:49.322646] SSH debug: SSHChannel._handleDataMessage: len=18
+[2026-09-12T22:22:51.079801] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+
+[2026-09-12T22:22:52.719332] SSH debug: SSHTransport._consumeEncryptedPacket
+[2026-09-12T22:22:52.913763] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:52.918882] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+[2026-09-12T22:22:53.120697] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+[2026-09-12T22:22:53.391194] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+[2026-09-12T22:22:53.612728] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+[2026-09-12T22:22:53.695488] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:53.700557] SSH debug: SSHChannel._handleDataMessage: len=1
+[2026-09-12T22:22:54.168117] SSH debug: SSHTransport._processPackets
+: len=4
+[2026-09-12T22:22:54.320759] SSH debug: SSHChannel._handleDataMessage: len=4
+[2026-09-12T22:22:54.474563] SSH debug: SSHChannel._uploadLoop: len=1
+ len=4
+[2026-09-12T22:22:54.518668] SSH debug: SSHTransport._consumeEncryptedPacket
+[2026-09-12T22:22:55.227693] SSH debug: SSHChannel._uploadLoop: len=1
+Packet
+[2026-09-12T22:22:55.976178] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+[2026-09-12T22:22:56.081444] SSH debug: SSHChannel._uploadLoop: len=1
+[2026-09-12T22:22:56.086292] SSH debug: SSHChannel._handleDataMessage: len=1
+[2026-09-12T22:22:56.528531] SSH debug: SSHTransport._consumeEncrypted[2026-0[2026-09-12T22:22:56.535307] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+

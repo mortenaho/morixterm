@@ -14,7 +14,7 @@ import 'services/app_log.dart';
 import 'services/rdp_session_service.dart';
 import 'services/session_storage.dart';
 import 'services/ssh_session_service.dart';
-import 'widgets/morixterm_logo.dart';
+import 'widgets/morixtrem_logo.dart';
 import 'widgets/ssh_terminal_pane.dart';
 
 class Moba {
