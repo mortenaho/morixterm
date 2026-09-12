@@ -51,7 +51,7 @@ class MorixtermApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'morixterm',
+      title: 'MoriXterm',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
@@ -827,10 +827,10 @@ class _SessionSidebar extends StatelessWidget {
                   size: 16, color: Colors.white70),
             ),
           ]),
-        ),
-        Expanded(
+          ),
+          Expanded(
           child: ListView(
-            children: [
+                children: [
               _folderHeader(context, null,
                   collapsed: collapsedFolders.contains('')),
               if (!collapsedFolders.contains(''))
@@ -878,7 +878,7 @@ class _SessionSidebar extends StatelessWidget {
                   size: 15,
                   color: Colors.white54),
               const SizedBox(width: 6),
-              Expanded(
+                  Expanded(
                   child: Text(folder ?? 'No folder',
                       style: const TextStyle(
                           fontSize: 11, color: Colors.white60))),
@@ -1046,9 +1046,9 @@ class _TabStrip extends StatelessWidget {
                       : const Color(0xFF1D4770),
                   onTap: () => onSelect(live.id),
                   onClose: () => onClose(live.id),
-                ),
-            ],
           ),
+        ],
+      ),
         ),
         _Tab(label: 'Files', selected: pane == _Pane.files, onTap: onFiles),
       ]),
@@ -1093,8 +1093,8 @@ class _Tab extends StatelessWidget {
                 child: Icon(Icons.close, size: 12, color: Colors.white54),
               ),
             ),
-        ]),
-      ),
+            ]),
+          ),
     );
   }
 }
@@ -1136,7 +1136,7 @@ class _AboutDialog extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('morixterm', style: TextStyle(fontSize: 25, fontWeight: FontWeight.w700, letterSpacing: 0.4)),
+                        Text('MoriXterm', style: TextStyle(fontSize: 25, fontWeight: FontWeight.w700, letterSpacing: 0.4)),
                         SizedBox(height: 5),
                         Text('Remote workspace, simplified.', style: TextStyle(color: Colors.white70)),
                       ],
@@ -1388,7 +1388,7 @@ class _FilesPane extends StatelessWidget {
                     height: 36,
                     color: Moba.toolbar,
                     padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Row(children: [
+        child: Row(children: [
                       _ExplorerBtn(
                           icon: Icons.arrow_upward,
                           label: 'Up',
@@ -1414,7 +1414,7 @@ class _FilesPane extends StatelessWidget {
                           icon: Icons.content_paste,
                           label: 'Paste',
                           onTap: ready && canPaste ? onPaste : null),
-                      const Spacer(),
+          const Spacer(),
                       Text(
                           ssh
                               ? 'SCP'
@@ -1649,7 +1649,7 @@ class _FileRow extends StatelessWidget {
                 fontStyle: cut ? FontStyle.italic : FontStyle.normal,
               ),
             ),
-          ),
+                ),
         ]),
       ),
     );
@@ -1749,8 +1749,8 @@ class _CredentialsDialogState extends State<_CredentialsDialog> {
             controlAffinity: ListTileControlAffinity.leading,
             title: const Text('Save password'),
           ),
-        ]),
-      ),
+            ]),
+          ),
       actions: [
         TextButton(
             onPressed: () => Navigator.pop(context),
@@ -1901,9 +1901,9 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
                         showPassword ? Icons.visibility_off : Icons.visibility),
                   ),
                 ),
-              ),
             ),
-          ]),
+          ),
+        ]),
           CheckboxListTile(
             contentPadding: EdgeInsets.zero,
             dense: true,

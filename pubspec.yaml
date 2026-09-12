@@ -25,4 +25,5 @@ flutter:
   assets:
     - assets/logo.png
     - assets/morixterm-mark.png
+    - assets/morixterm-brand.png
     - assets/wordmark.png

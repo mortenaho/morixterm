@@ -13,7 +13,7 @@ class MorixtermLogo extends StatelessWidget {
       width: size,
       height: size,
       child: Image.asset(
-        'assets/morixterm-mark.png',
+        'assets/morixterm-brand.png',
         fit: BoxFit.contain,
         filterQuality: FilterQuality.high,
       ),
