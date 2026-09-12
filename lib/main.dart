@@ -251,10 +251,11 @@ class _WorkspacePageState extends State<WorkspacePage> {
     setState(() => sessions = updated);
     try {
       await sessionStorage.saveAll(updated);
-      if (mounted)
+      if (mounted) {
         showMessage(folder == null
             ? 'session به بخش بدون پوشه منتقل شد'
             : 'session به پوشهٔ $folder منتقل شد');
+      }
     } catch (error) {
       if (mounted) {
         setState(() => sessions = previous);
@@ -1652,10 +1653,10 @@ class _AboutDialog extends StatelessWidget {
                   const SizedBox(height: 20),
                   const Text('Built-in capabilities', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white70)),
                   const SizedBox(height: 10),
-                  Wrap(
+                  const Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: const [
+                    children: [
                       _AboutChip(icon: Icons.terminal, label: 'SSH terminal'),
                       _AboutChip(icon: Icons.desktop_windows_outlined, label: 'RDP sessions'),
                       _AboutChip(icon: Icons.folder_outlined, label: 'SCP file transfer'),
@@ -2378,7 +2379,7 @@ class _PathBreadcrumb extends StatelessWidget {
     final crumbs = RemoteEntry.breadcrumbs(path);
     final accent =
         following ? const Color(0xFF98C379) : const Color(0xFF9CDCFE);
-    final muted = Colors.white38;
+    const muted = Colors.white38;
     final fontSize = compact ? 11.0 : 13.0;
 
     return SingleChildScrollView(
@@ -2605,9 +2606,12 @@ class _FileRow extends StatelessWidget {
   IconData get _icon {
     if (directory) return Icons.folder;
     final lower = name.toLowerCase();
-    if (lower.endsWith('.html') || lower.endsWith('.htm'))
+    if (lower.endsWith('.html') || lower.endsWith('.htm')) {
       return Icons.language;
-    if (lower.endsWith('.sh') || lower.endsWith('.bash')) return Icons.terminal;
+    }
+    if (lower.endsWith('.sh') || lower.endsWith('.bash')) {
+      return Icons.terminal;
+    }
     return Icons.insert_drive_file;
   }
 

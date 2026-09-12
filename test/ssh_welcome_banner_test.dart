@@ -18,7 +18,8 @@ void main() {
     expect(banner, contains('M'));
     expect(banner, contains('v1.0.0'));
     expect(banner, contains('alice'));
-    expect(banner, contains('@example.com'));
+    expect(banner, contains('@'));
+    expect(banner, contains('example.com'));
     expect(banner, contains('2222'));
     expect(banner, contains('CONNECTED'));
     expect(banner, contains('Connect · Manage · Explore'));

@@ -30,19 +30,20 @@ String sshWelcomeBanner({
   String row(String content) {
     final plain = content.replaceAll(RegExp(r'\x1b\[[0-9;]*m'), '');
     final pad = (width - plain.length).clamp(0, width);
-    return '$border|${reset}$content${' ' * pad}$border|$reset';
+    return '$border|$reset$content${' ' * pad}$border|$reset';
   }
 
   String empty() => row('');
   String rule() => row('  $soft${'-' * 62}$reset');
 
-  final brand =
-      '$white$bold MORI$reset${c2}X${reset}${c3}T${reset}${c4}E${reset}${c5}R${reset}${c6}M$reset';
-  final session = '$brightGreen$username$reset$white@$c2$host$reset  $dim·$reset  $muted$port$reset';
+  const brand =
+      '$white$bold MORI$reset${c2}X$reset${c3}T$reset${c4}E$reset${c5}R$reset${c6}M$reset';
+  final session =
+      '$brightGreen$username$reset$white@$c2$host$reset  $dim·$reset  $muted$port$reset';
   final time = DateTime.now().toLocal().toString().split('.').first;
 
   // Compact gradient mark — single-width ASCII only.
-  final mark = '$c1*$reset$c2*$reset$c3*$reset$c4*$reset$c5*$reset$c6*$reset';
+  const mark = '$c1*$reset$c2*$reset$c3*$reset$c4*$reset$c5*$reset$c6*$reset';
 
   final lines = <String>[
     '$border+${'-' * width}+$reset',
