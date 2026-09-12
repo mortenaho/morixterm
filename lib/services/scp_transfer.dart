@@ -76,6 +76,68 @@ class ScpTransfer {
     await _run(client, 'mv -- ${_args(sources, destDir)}', 'انتقال فایل ناموفق بود');
   }
 
+  static Future<void> mkdir(SSHClient client, String parentDir, String name) async {
+    if (!_safeName(name)) {
+      throw ScpException('Invalid folder name');
+    }
+    final path = RemoteEntry.join(parentDir, name);
+    await _run(client, 'mkdir -- ${_shellQuote(path)}', 'Could not create folder');
+  }
+
+  static Future<void> rename(SSHClient client, String path, String newName) async {
+    if (!_safeName(newName)) {
+      throw ScpException('Invalid new name');
+    }
+    final parent = RemoteEntry.parent(path);
+    final dest = RemoteEntry.join(parent, newName);
+    if (dest == path) return;
+    await _run(client, 'mv -- ${_shellQuote(path)} ${_shellQuote(dest)}', 'Rename failed');
+  }
+
+  static Future<String> fileMode(SSHClient client, String path) async {
+    try {
+      final out = await _run(client, 'stat -c %a -- ${_shellQuote(path)}', 'Could not read permissions');
+      final mode = out.trim().split(RegExp(r'\s+')).first;
+      if (RegExp(r'^[0-7]{3,4}$').hasMatch(mode)) {
+        return mode.length == 4 ? mode.substring(1) : mode;
+      }
+    } catch (_) {}
+    final out = await _run(client, 'LC_ALL=C ls -ld -- ${_shellQuote(path)}', 'Could not read permissions');
+    return _modeFromLs(out.trim().split(RegExp(r'\s+')).first);
+  }
+
+  static Future<void> chmod(
+    SSHClient client,
+    List<String> paths, {
+    required String mode,
+    bool recursive = false,
+  }) async {
+    final normalized = _normalizeMode(mode);
+    final flag = recursive ? '-R ' : '';
+    await _run(
+      client,
+      'chmod $flag$normalized -- ${paths.map(_shellQuote).join(' ')}',
+      'Permission change failed',
+    );
+  }
+
+  static String _normalizeMode(String mode) {
+    final trimmed = mode.trim();
+    if (!RegExp(r'^[0-7]{3,4}$').hasMatch(trimmed)) {
+      throw ScpException('Mode must look like 755 or 644');
+    }
+    return trimmed.length == 4 ? trimmed.substring(1) : trimmed;
+  }
+
+  static String _modeFromLs(String perms) {
+    if (perms.length < 10) return '644';
+    int bit(String c, String expect) => c == expect ? 1 : 0;
+    int triad(int i) =>
+        (bit(perms[i], 'r') << 2) | (bit(perms[i + 1], 'w') << 1) | bit(perms[i + 2], 'x');
+    final value = (triad(1) << 6) | (triad(4) << 3) | triad(7);
+    return value.toRadixString(8).padLeft(3, '0');
+  }
+
   static Future<String> _run(SSHClient client, String command, String fallback) async {
     final result = await client.runWithResult(command);
     if ((result.exitCode ?? 0) != 0) {

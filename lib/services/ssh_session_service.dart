@@ -158,9 +158,9 @@ class SshSessionService {
     // Apply styling only to this shell process; nothing is written to the
     // remote user's profile or persisted on the server.
     const command = r'''if [ -n "$BASH_VERSION" ]; then
-PS1='\[\e[38;5;51m\]\u\[\e[0m\]@\[\e[38;5;141m\]\h\[\e[0m\]:\[\e[38;5;82m\]\w\[\e[0m\]\$ ';
+PS1='\[\e[1;32m\]\u\[\e[0m\]@\[\e[1;34m\]\h\[\e[0m\]:\[\e[38;5;82m\]\w\[\e[0m\]\$ ';
 elif [ -n "$ZSH_VERSION" ]; then
-PROMPT='%F{cyan}%n%f@%F{magenta}%m%f:%F{green}%~%f %# ';
+PROMPT='%F{green}%B%n%b%f@%F{blue}%B%m%b%f:%F{green}%~%f %# ';
 fi
 alias ls='ls --color=auto'
 alias ll='ls -lah --color=auto'
@@ -295,6 +295,38 @@ alias ll='ls -lah --color=auto'
   Future<void> moveRemote(List<String> sources, String destDir) async {
     try {
       await ScpTransfer.moveTo(_requireClient('move'), sources, destDir);
+    } on ScpException catch (error) {
+      throw SshException(error.message);
+    }
+  }
+
+  Future<void> mkdirRemote(String parentDir, String name) async {
+    try {
+      await ScpTransfer.mkdir(_requireClient('mkdir'), parentDir, name);
+    } on ScpException catch (error) {
+      throw SshException(error.message);
+    }
+  }
+
+  Future<void> renameRemote(String path, String newName) async {
+    try {
+      await ScpTransfer.rename(_requireClient('rename'), path, newName);
+    } on ScpException catch (error) {
+      throw SshException(error.message);
+    }
+  }
+
+  Future<String> remoteMode(String path) async {
+    try {
+      return await ScpTransfer.fileMode(_requireClient('mode'), path);
+    } on ScpException catch (error) {
+      throw SshException(error.message);
+    }
+  }
+
+  Future<void> chmodRemote(List<String> paths, {required String mode, bool recursive = false}) async {
+    try {
+      await ScpTransfer.chmod(_requireClient('chmod'), paths, mode: mode, recursive: recursive);
     } on ScpException catch (error) {
       throw SshException(error.message);
     }

@@ -174,6 +174,76 @@ class RdpSessionService {
     }
   }
 
+  Future<void> mkdirShared(String parentDir, String name) async {
+    final root = await ensureShareDir();
+    if (!_insideShare(parentDir, root.path)) {
+      throw RdpException('Path is outside the shared drive');
+    }
+    if (name.isEmpty || name.contains('/') || name.contains('\\') || name == '.' || name == '..') {
+      throw RdpException('Invalid folder name');
+    }
+    final path = RemoteEntry.join(parentDir, name);
+    final dir = Directory(path);
+    if (await dir.exists()) {
+      throw RdpException('Folder already exists');
+    }
+    await dir.create();
+  }
+
+  Future<void> renameShared(String path, String newName) async {
+    final root = await ensureShareDir();
+    if (!_insideShare(path, root.path)) {
+      throw RdpException('مسیر خارج از درایو اشتراکی است');
+    }
+    if (newName.isEmpty || newName.contains('/') || newName.contains('\\') || newName == '.' || newName == '..') {
+      throw RdpException('Invalid new name');
+    }
+    final parent = RemoteEntry.parent(path);
+    final dest = RemoteEntry.join(parent, newName);
+    if (dest == path) return;
+    final result = await Process.run('mv', ['--', path, dest]);
+    if (result.exitCode != 0) {
+      throw RdpException((result.stderr as String).trim().isEmpty ? 'Rename failed' : (result.stderr as String).trim());
+    }
+  }
+
+  Future<String> sharedMode(String path) async {
+    final root = await ensureShareDir();
+    if (!_insideShare(path, root.path)) {
+      throw RdpException('Path is outside the shared drive');
+    }
+    final result = await Process.run('stat', ['-c', '%a', '--', path]);
+    if (result.exitCode != 0) {
+      throw RdpException('Could not read permissions');
+    }
+    var mode = (result.stdout as String).trim();
+    if (mode.length == 4) mode = mode.substring(1);
+    return mode;
+  }
+
+  Future<void> chmodShared(List<String> paths, {required String mode, bool recursive = false}) async {
+    final root = await ensureShareDir();
+    for (final path in paths) {
+      if (!_insideShare(path, root.path)) {
+        throw RdpException('Path is outside the shared drive');
+      }
+    }
+    final normalized = mode.trim();
+    if (!RegExp(r'^[0-7]{3,4}$').hasMatch(normalized)) {
+      throw RdpException('Mode must look like 755 or 644');
+    }
+    final args = <String>[
+      if (recursive) '-R',
+      normalized.length == 4 ? normalized.substring(1) : normalized,
+      '--',
+      ...paths,
+    ];
+    final result = await Process.run('chmod', args);
+    if (result.exitCode != 0) {
+      throw RdpException((result.stderr as String).trim().isEmpty ? 'Permission change failed' : (result.stderr as String).trim());
+    }
+  }
+
   bool _insideShare(String path, String root) {
     final resolved = File(path).absolute.path;
     final base = Directory(root).absolute.path;
