@@ -34,7 +34,7 @@ jobs:
 
       - name: Apply morixterm Windows icon
         shell: pwsh
-        run: Copy-Item -Force assets/morixterm.ico windows/runner/resources/app_icon.ico
+        run: Copy-Item -Force assets/morixtrem.ico windows/runner/resources/app_icon.ico
 
       - name: Install dependencies
         run: flutter pub get
@@ -128,7 +128,7 @@ jobs:
 
   publish-release:
     name: Publish GitHub Release
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/github-windows-build-action'
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/feature/')
     needs: [build-windows, build-linux]
     runs-on: ubuntu-latest
 

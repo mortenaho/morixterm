@@ -1,23 +1,39 @@
 
-===== SSH testde localhost:2222 user=test @ 2026-09-12T23:32:57.283297 =====
-[2026-09-12T23:32:58.981835] SSH socket connected, keys=0
-essPackets
- "SSH-2.0-OpenSSH_10.3"
-[2026-09-12T23:32:58.992226] SSH debug: SSHTransport._clientMacType: SSHMacType(hmac-sha2-256-etm@openssh.com)
-[2026-09-12T23:32:59.010829] SSH debug: SSHTransport._consumeEncryptedPacket
+===== SSH testde localhost:2222 user=test @ 2026-09-12T23:49:05.401355 =====
+[2026-09-12T23:49:07.277843] SSH socket connected, keys=0
+leMessageKexInit
+Type(hmac-sha2-256-etm@openssh.com)
+[2026-09-12T23:49:07.388001] SSH debug: SSHTransport._handleMessageExtInfo
+t
 , 58, 49, 112, 115, 120, 51, 87, 77, 50, 85, 90, 119, 84, 77, 88, 83, 57, 43, 118, 100, 55, 76, 76, 100, 109, 117, 113, 65, 112, 56, 85, 66, 82, 122, 50, 51, 48, 75, 48, 49, 83, 116, 111, 119]
-[2026-09-12T23:32:59.066268] SSH debug: SSHTransport._consumeEncryptedPacket
-ssword
-[2026-09-12T23:32:59.116693] SSH debug: SSHTransport._consumeEncryptedPacket
-[2026-09-12T23:32:59.146296] SSH debug: SSHChannel._handleWindowAdjustMessage[20[2026-09-12T23:32:59.172090] SSH debug: SSHTransport._consumeEncryptedPacket
-[[2026-09-12T23:32:59.233726] SSH debug: SSHTransport._consumeEncryptedPacket
+[2026-09-12T23:49:07.423850] SSH debug: SSHClient._authWithPassword
+on
+hod.password
+[2026-09-12T23:49:07.460889] SSH debug: SSHClient._handleUserauthSuccess
+ket
+[2026-09-12T23:49:07.518224] SSH debug: SSHTransport._processPackets
+dPacket
+[2026-09-12T23:49:07.540306] SSH debug: SSHChannel._handleRequestSuccessMessa[20[2026-09-12T23:49:07.594331] SSH debug: SSHTransport._processPackets
+dPack[2026-[2026-0[2026-09-12T23:49:07.594764] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+[2026-09-12T23:49:07.632016] SSH debug: SSHChannel._uploadLoop: len=1457
+[2026-09-12T23:49:07.668935] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
 
-[2026-09-12T23:32:59.958649] SSH debug: SSHChannel._sendEOFIfNeeded
-edPacket
-s
+[2026-09-12T23:49:07.757689] SSH debug: SSHChannel._handleDataMessage: [2026-09-12T23:49:07.758407] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
+[2026-09-12T23:49:07.797287] SSH debug: SSHTransport._consumeEncrypted[2026-0[2026-09-12T23:49:08.605019] SSH debug: SSHTransport._processPackets
+
+
+[2026-09-12T23:49:08.633855] SSH debug: SSHChannel._handleEOFMessage
+: len=102
 
 097152
-[2026-09-12T23:33:19.107891] SSH debug: SSHTransport._processPackets
+[2026-09-12T23:49:08.634520] SSH debug: SSHTransport._consumeEncryptedPacket
+
+
+[2026-09-12T23:49:12.174011] SSH debug: SSHTransport._processPackets
 dPacket
-[2026-09-12T23:33:39.106855] SSH debug: SSHTransport._consumeEncryptedPacket
-[2026-09-12T23:33:59.105898] SSH debug: SSHTransport._consumeEncryptedPacket
+[2026-09-12T23:49:27.453458] SSH debug: SSHTransport._consumeEncryptedPacket
+[2026-09-12T23:49:47.453647] SSH debug: SSHTransport._processPackets
+dPacket
+[2026-09-12T23:50:07.452984] SSH debug: SSHTransport._processPackets
+dPacket
+[2026-09-12T23:50:27.457831] SSH debug: SSHTransport._consumeEncryptedPacket

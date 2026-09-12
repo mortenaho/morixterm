@@ -123,19 +123,14 @@ class SshSessionService {
       terminal.onResize = shell.resizeTerminal;
       _stdoutSub = shell.stdout.listen(_writeToTerminal);
       _stderrSub = shell.stderr.listen(_writeToTerminal);
+      // Local welcome art (not sent to the remote shell).
+      terminal.write('\x1b[?25h\x1b[?12h'); // show cursor + blink
       terminal.write(sshWelcomeBanner(
         username: request.username.trim(),
         host: endpoint.host,
         port: endpoint.port,
       ));
-      unawaited(_enableSessionColors(
-        shell,
-        redrawBanner: sshWelcomeBanner(
-          username: request.username.trim(),
-          host: endpoint.host,
-          port: endpoint.port,
-        ),
-      ));
+      unawaited(_enableSessionColors(shell));
       shell.done.then((_) {
         if (!_stopping && _snapshot.phase == ConnectionPhase.connected) {
           _emit(const ConnectionSnapshot(phase: ConnectionPhase.idle));
@@ -166,13 +161,10 @@ class SshSessionService {
     }
   }
 
-  Future<void> _enableSessionColors(
-    SSHSession shell, {
-    required String redrawBanner,
-  }) async {
+  Future<void> _enableSessionColors(SSHSession shell) async {
     // Apply styling only to this shell process; nothing is written to the
-    // remote user's profile. Echo is disabled so setup is not shown in the
-    // terminal, then the screen is cleared and the welcome banner redrawn.
+    // remote user's profile. Echo is disabled so setup is not shown, then a
+    // fresh prompt is requested so the user can type immediately.
     const script = r'''
 __morixtrem_cwd(){ printf '\033]777;cwd;%s\007' "$PWD"; }
 if [ -n "$BASH_VERSION" ]; then
@@ -201,14 +193,15 @@ __morixtrem_cwd 2>/dev/null || true
     write(
       'eval "\$(echo $b64 | base64 -d 2>/dev/null || echo $b64 | base64 -D 2>/dev/null)"\n',
     );
-    await Future<void>.delayed(const Duration(milliseconds: 60));
+    await Future<void>.delayed(const Duration(milliseconds: 80));
     if (_stopping || !identical(_shell, shell)) return;
 
-    write(r"stty echo 2>/dev/null || true; printf '\033[H\033[2J'");
+    // Restore echo and force a new prompt line ready for input.
+    write('stty echo 2>/dev/null || true\n');
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+    if (_stopping || !identical(_shell, shell)) return;
     write('\n');
-    await Future<void>.delayed(const Duration(milliseconds: 80));
-    if (_stopping || _terminal == null || !identical(_shell, shell)) return;
-    _terminal!.write(redrawBanner);
+    _terminal?.write('\x1b[?25h\x1b[?12h');
   }
 
   Future<void> disconnect() async {

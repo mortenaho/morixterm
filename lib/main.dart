@@ -596,7 +596,18 @@ class _WorkspacePageState extends State<WorkspacePage> {
       onRename: () => _renameSelection(target: live),
       onPermissions: () => _chmodSelection(target: live),
       onRefresh: () => _refreshFiles(live),
+      onCopyPath: () => _copyExplorerPath(live),
     );
+  }
+
+  Future<void> _copyExplorerPath(LiveSession live, {String? itemPath}) async {
+    final value = (itemPath ?? live.explorerPath).trim();
+    if (value.isEmpty) {
+      showMessage('مسیری برای کپی نیست');
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: value));
+    if (mounted) showMessage('Path copied');
   }
 
   Future<void> _refreshFiles([LiveSession? target]) async {
@@ -1840,6 +1851,7 @@ class _FilesPane extends StatelessWidget {
     required this.onRename,
     required this.onPermissions,
     required this.onRefresh,
+    required this.onCopyPath,
     this.compact = false,
     this.following = false,
     this.autofocus = true,
@@ -1869,6 +1881,7 @@ class _FilesPane extends StatelessWidget {
   final VoidCallback onRename;
   final VoidCallback onPermissions;
   final VoidCallback onRefresh;
+  final VoidCallback onCopyPath;
   final VoidCallback? onClose;
   final VoidCallback? onFollow;
 
@@ -1912,6 +1925,8 @@ class _FilesPane extends StatelessWidget {
         },
         child: Focus(
           autofocus: autofocus,
+          canRequestFocus: autofocus,
+          skipTraversal: !autofocus,
           child: ColoredBox(
             color: compact ? Moba.sidebar : const Color(0xFF1A1A1A),
             child: Column(
@@ -2118,6 +2133,7 @@ class _FilesPane extends StatelessWidget {
                                           onNewFolder: onNewFolder,
                                           onPaste: canPaste ? onPaste : null,
                                           onRefresh: onRefresh,
+                                          onCopyPath: onCopyPath,
                                         );
                                       }
                                       final entry =
@@ -2149,6 +2165,7 @@ class _FilesPane extends StatelessWidget {
                                             : null,
                                         onPermissions: onPermissions,
                                         onRefresh: onRefresh,
+                                        onCopyPath: onCopyPath,
                                       );
                                     },
                                     childCount:
@@ -2180,6 +2197,12 @@ class _FilesPane extends StatelessWidget {
                                                     dividerBefore: true,
                                                   ),
                                                 const _CtxItem(
+                                                  value: 'copyPath',
+                                                  label: 'Copy path',
+                                                  icon: Icons.link,
+                                                  dividerBefore: true,
+                                                ),
+                                                const _CtxItem(
                                                   value: 'refresh',
                                                   label: 'Refresh',
                                                   icon: Icons.refresh,
@@ -2193,6 +2216,8 @@ class _FilesPane extends StatelessWidget {
                                                 onNewFolder();
                                               case 'paste':
                                                 onPaste();
+                                              case 'copyPath':
+                                                onCopyPath();
                                               case 'refresh':
                                                 onRefresh();
                                             }
@@ -2558,6 +2583,7 @@ class _FileRow extends StatelessWidget {
     this.onRename,
     this.onPermissions,
     this.onRefresh,
+    this.onCopyPath,
   });
 
   final String name;
@@ -2574,6 +2600,7 @@ class _FileRow extends StatelessWidget {
   final VoidCallback? onRename;
   final VoidCallback? onPermissions;
   final VoidCallback? onRefresh;
+  final VoidCallback? onCopyPath;
 
   IconData get _icon {
     if (directory) return Icons.folder;
@@ -2592,7 +2619,8 @@ class _FileRow extends StatelessWidget {
         onNewFolder != null ||
         onRename != null ||
         onPermissions != null ||
-        onRefresh != null;
+        onRefresh != null ||
+        onCopyPath != null;
     return InkWell(
       onTap: onTap,
       onDoubleTap: onDoubleTap,
@@ -2636,6 +2664,13 @@ class _FileRow extends StatelessWidget {
                     icon: Icons.content_paste,
                     shortcut: 'Ctrl+V',
                   ),
+                if (onCopyPath != null)
+                  const _CtxItem(
+                    value: 'copyPath',
+                    label: 'Copy path',
+                    icon: Icons.link,
+                    dividerBefore: true,
+                  ),
                 if (onRename != null)
                   const _CtxItem(
                     value: 'rename',
@@ -2672,6 +2707,8 @@ class _FileRow extends StatelessWidget {
                   onCut?.call();
                 case 'paste':
                   onPaste?.call();
+                case 'copyPath':
+                  onCopyPath?.call();
                 case 'rename':
                   onRename?.call();
                 case 'chmod':
@@ -3069,7 +3106,6 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
 
 class _SessionSurface extends StatelessWidget {
   const _SessionSurface({
-    super.key,
     required this.snapshot,
     required this.session,
     required this.terminal,

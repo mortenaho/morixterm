@@ -21,6 +21,7 @@ class SshTerminalPane extends StatefulWidget {
 
 class _SshTerminalPaneState extends State<SshTerminalPane> {
   late final TerminalController _controller;
+  late final FocusNode _focusNode;
   var _fontSize = 13.0;
   var _themeMode = _TerminalThemeMode.morixterm;
 
@@ -115,11 +116,28 @@ class _SshTerminalPaneState extends State<SshTerminalPane> {
   void initState() {
     super.initState();
     _controller = TerminalController();
+    _focusNode = FocusNode(debugLabel: 'ssh-terminal');
+    WidgetsBinding.instance.addPostFrameCallback((_) => _focusTerminal());
+  }
+
+  @override
+  void didUpdateWidget(covariant SshTerminalPane oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.terminal != widget.terminal ||
+        oldWidget.filesOpen != widget.filesOpen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _focusTerminal());
+    }
+  }
+
+  void _focusTerminal() {
+    if (!mounted) return;
+    if (!_focusNode.hasFocus) _focusNode.requestFocus();
   }
 
   @override
   void dispose() {
     _controller.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -254,6 +272,7 @@ class _SshTerminalPaneState extends State<SshTerminalPane> {
               widget.terminal,
               key: ValueKey(_themeMode),
               controller: _controller,
+              focusNode: _focusNode,
               theme: _theme,
               textStyle: style,
               padding: const EdgeInsets.all(10),
