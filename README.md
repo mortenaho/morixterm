@@ -1,6 +1,8 @@
 # morixterm
 
-اپلیکیشن دسکتاپی مبتنی بر Flutter/Dart برای مدیریت اتصال‌های RDP و انتقال فایل به سرورهای ویندوزی.
+اپلیکیشن دسکتاپی مبتنی بر Flutter/Dart برای مدیریت اتصال‌های SSH/RDP، ترمینال تعاملی و مرور فایل‌های ریموت.
+
+![morixterm screenshot](assets/morixterm-screenshot.png)
 
 ## وضعیت فعلی
 
