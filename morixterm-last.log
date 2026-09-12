@@ -1,47 +1,23 @@
 
-===== SSH Linux SSH 192.168.1.20:22 user=root @ 2026-09-12T23:00:02.014928 =====
-[2026-09-12T23:00:05.181179] SSH ERROR: SocketException: No route to host (OS Error: No route to host, errno = 113), address = 192.168.1.20, port = 53078
-[2026-09-12T23:00:05.241907] #0      _NativeSocket.startConnect (dart:io-patch/socket_patch.dart:817:35)
-#1      _NativeSocket.connect (dart:io-patch/socket_patch.dart:1142:12)
-#2      _RawSocket.connect (dart:io-patch/socket_patch.dart:2256:26)
-#3      RawSocket.connect (dart:io-patch/socket_patch.dart:31:23)
-#4      Socket._connect (dart:io-patch/socket_patch.dart:2526:22)
-#5      Socket.connect (dart:io/socket.dart:869:21)
-#6      connectNativeSocket (package:dartssh2/src/socket/ssh_socket_io.dart:12:31)
-#7      SSHSocket.connect (package:dartssh2/src/socket/ssh_socket.dart:17:18)
-#8      SshSessionService.connect (package:morixterm/services/ssh_session_service.dart:80:38)
-<asynchronous suspension>
-#9      _WorkspacePageState._connectSession (package:morixterm/main.dart:384:9)
-<asynchronous suspension>
+===== SSH testde localhost:2222 user=test @ 2026-09-12T23:32:57.283297 =====
+[2026-09-12T23:32:58.981835] SSH socket connected, keys=0
+essPackets
+ "SSH-2.0-OpenSSH_10.3"
+[2026-09-12T23:32:58.992226] SSH debug: SSHTransport._clientMacType: SSHMacType(hmac-sha2-256-etm@openssh.com)
+[2026-09-12T23:32:59.010829] SSH debug: SSHTransport._consumeEncryptedPacket
+, 58, 49, 112, 115, 120, 51, 87, 77, 50, 85, 90, 119, 84, 77, 88, 83, 57, 43, 118, 100, 55, 76, 76, 100, 109, 117, 113, 65, 112, 56, 85, 66, 82, 122, 50, 51, 48, 75, 48, 49, 83, 116, 111, 119]
+[2026-09-12T23:32:59.066268] SSH debug: SSHTransport._consumeEncryptedPacket
+ssword
+[2026-09-12T23:32:59.116693] SSH debug: SSHTransport._consumeEncryptedPacket
+[2026-09-12T23:32:59.146296] SSH debug: SSHChannel._handleWindowAdjustMessage[20[2026-09-12T23:32:59.172090] SSH debug: SSHTransport._consumeEncryptedPacket
+[[2026-09-12T23:32:59.233726] SSH debug: SSHTransport._consumeEncryptedPacket
 
-[2026-09-12T23:00:05.329148] SSH FAIL: اتصال SSH برقرار نشد.
-SocketException: No route to host (OS Error: No route to host, errno = 113), address = 192.168.1.20, port = 53078
-لاگ: /home/mortenaho/.local/share/morixterm/morixterm-last.log
-[2026-09-12T23:00:18.992825] SSH debug: SSHTransport._consumeEncryptedPacket
-[2026-09-12T23:00:23.309375] files pane focused=testde ssh=true rdp=false
-[2026-09-12T23:00:23.519893] SSH debug: SSHChannel._sendEOFIfNeeded
-d
-Needed
+[2026-09-12T23:32:59.958649] SSH debug: SSHChannel._sendEOFIfNeeded
+edPacket
 s
-7152
-[2026-09-12T23:00:27.678352] SSH debug: SSHTransport._consumeEncryptedPacket
-[2026-09-12T23:00:27.695025] SSH debug: SSHTransport._consumeEncryptedPacket
-: 2097152
-[2026-09-12T23:00:27.696132] SSH debug: SSHTransport._consumeEncryptedPacket
-s
-[2026-09-12T23:00:38.994150] SSH debug: SSHTransport._consumeEncryptedPacket
-[2026-09-12T23:00:58.994029] SSH debug: SSHTransport._processPackets
+
+097152
+[2026-09-12T23:33:19.107891] SSH debug: SSHTransport._processPackets
 dPacket
-[2026-09-12T23:01:18.993172] SSH debug: SSHTransport._processPackets
-dPacket
-[2026-09-12T23:01:38.993288] SSH debug: SSHTransport._consumeEncryptedPacket
-[2026-09-12T23:01:58.992785] SSH debug: SSHTransport._processPackets
-dPacket
-[2026-09-12T23:02:18.992057] SSH debug: SSHTransport._processPackets
-dPacket
-[2026-09-12T23:02:38.994509] SSH debug: SSHTransport._consumeEncryptedPacket
-[2026-09-12T23:02:58.993070] SSH debug: SSHTransport._processPackets
-dPacket
-[2026-09-12T23:03:18.993001] SSH debug: SSHTransport._consumeEncryptedPacket
-[2026-09-12T23:03:38.995601] SSH debug: SSHTransport._consumeEncryptedPacket
-[2026-09-12T23:03:58.993102] SSH debug: SSHTransport._consumeEncryptedPacket
+[2026-09-12T23:33:39.106855] SSH debug: SSHTransport._consumeEncryptedPacket
+[2026-09-12T23:33:59.105898] SSH debug: SSHTransport._consumeEncryptedPacket

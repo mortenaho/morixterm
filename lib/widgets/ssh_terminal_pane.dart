@@ -4,9 +4,16 @@ import 'package:flutter/services.dart';
 import 'package:xterm/xterm.dart';
 
 class SshTerminalPane extends StatefulWidget {
-  const SshTerminalPane({super.key, required this.terminal});
+  const SshTerminalPane({
+    super.key,
+    required this.terminal,
+    this.onToggleFiles,
+    this.filesOpen = false,
+  });
 
   final Terminal terminal;
+  final VoidCallback? onToggleFiles;
+  final bool filesOpen;
 
   @override
   State<SshTerminalPane> createState() => _SshTerminalPaneState();
@@ -233,6 +240,8 @@ class _SshTerminalPaneState extends State<SshTerminalPane> {
           onSearch: _showSearch,
           onZoom: _zoom,
           onThemeChanged: (value) => setState(() => _themeMode = value),
+          onToggleFiles: widget.onToggleFiles,
+          filesOpen: widget.filesOpen,
         ),
         Expanded(
           child: Listener(
@@ -287,6 +296,8 @@ class _TerminalToolbar extends StatelessWidget {
     required this.onSearch,
     required this.onZoom,
     required this.onThemeChanged,
+    this.onToggleFiles,
+    this.filesOpen = false,
   });
 
   final double fontSize;
@@ -297,6 +308,8 @@ class _TerminalToolbar extends StatelessWidget {
   final VoidCallback onSearch;
   final void Function(int) onZoom;
   final ValueChanged<_TerminalThemeMode> onThemeChanged;
+  final VoidCallback? onToggleFiles;
+  final bool filesOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -327,6 +340,15 @@ class _TerminalToolbar extends StatelessWidget {
               PopupMenuItem(value: _TerminalThemeMode.light, child: Text('Light')),
             ],
           ),
+          if (onToggleFiles != null) ...[
+            const VerticalDivider(width: 12),
+            _Tool(
+              icon: filesOpen ? Icons.folder_off_outlined : Icons.folder_open,
+              tooltip: filesOpen ? 'Hide files sidebar' : 'Show files sidebar',
+              onPressed: onToggleFiles!,
+              color: filesOpen ? const Color(0xFF3D9970) : null,
+            ),
+          ],
           const Spacer(),
           Text('SSH • ${_themeLabel(themeMode)}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
         ],
@@ -336,11 +358,17 @@ class _TerminalToolbar extends StatelessWidget {
 }
 
 class _Tool extends StatelessWidget {
-  const _Tool({required this.icon, required this.tooltip, required this.onPressed});
+  const _Tool({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+    this.color,
+  });
 
   final IconData icon;
   final String tooltip;
   final VoidCallback onPressed;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
@@ -351,7 +379,7 @@ class _Tool extends StatelessWidget {
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints.tightFor(width: 30, height: 30),
       splashRadius: 16,
-      color: Colors.white70,
+      color: color ?? Colors.white70,
     );
   }
 }

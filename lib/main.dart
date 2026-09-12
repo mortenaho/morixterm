@@ -364,9 +364,67 @@ class _WorkspacePageState extends State<WorkspacePage> {
 
   void _watchLive(LiveSession live) {
     final changes = live.ssh?.changes ?? live.rdp?.changes;
-    live.subscription = changes?.listen((_) {
-      if (mounted) setState(() {});
+    live.subscription = changes?.listen((snapshot) {
+      if (!mounted) return;
+      setState(() {});
+      if (live.isSsh &&
+          snapshot.phase == ConnectionPhase.connected &&
+          !live.filesSidebarOpen) {
+        unawaited(_openSshFilesSidebar(live));
+      }
     });
+    live.cwdSubscription?.cancel();
+    live.cwdSubscription = live.ssh?.cwdChanges.listen((path) {
+      if (!mounted || !live.followTerminalCwd) return;
+      if (path == live.explorerPath) return;
+      live.explorerPath = path;
+      live.selectedPaths.clear();
+      setState(() {});
+      unawaited(_refreshFiles(live));
+    });
+  }
+
+  Future<void> _openSshFilesSidebar(LiveSession live) async {
+    if (!live.isSsh || !live.connected) return;
+    live.filesSidebarOpen = true;
+    live.followTerminalCwd = true;
+    if (!mounted) return;
+    setState(() {});
+    final cwd = live.ssh?.shellCwd;
+    if (cwd != null && cwd.isNotEmpty) {
+      live.explorerPath = cwd;
+    } else if (live.explorerPath.isEmpty) {
+      try {
+        live.explorerPath = await live.ssh!.homeDir();
+      } catch (error) {
+        if (mounted) showMessage('خواندن پوشه خانگی ناموفق بود: $error');
+        return;
+      }
+    }
+    if (!mounted) return;
+    setState(() {});
+    await _refreshFiles(live);
+  }
+
+  void _toggleFilesSidebar(LiveSession live) {
+    if (!live.isSsh) return;
+    if (live.filesSidebarOpen) {
+      setState(() => live.filesSidebarOpen = false);
+      return;
+    }
+    unawaited(_openSshFilesSidebar(live));
+  }
+
+  void _syncExplorerToTerminal(LiveSession live) {
+    final cwd = live.ssh?.shellCwd;
+    setState(() {
+      live.followTerminalCwd = true;
+      if (cwd != null && cwd.isNotEmpty) {
+        live.explorerPath = cwd;
+        live.selectedPaths.clear();
+      }
+    });
+    unawaited(_refreshFiles(live));
   }
 
   LiveSession _createLive(SavedSession bookmark) {
@@ -433,6 +491,9 @@ class _WorkspacePageState extends State<WorkspacePage> {
       });
       try {
         await live!.connect(username: username, password: usedPassword);
+        if (mounted && live!.isSsh && live!.connected) {
+          await _openSshFilesSidebar(live!);
+        }
       } on RdpException catch (error) {
         if (mounted) showMessage(error.message);
       } on SshException catch (error) {
@@ -481,12 +542,19 @@ class _WorkspacePageState extends State<WorkspacePage> {
       showMessage('اول به یک جلسه SSH یا RDP وصل شوید، بعد Files را باز کنید');
       return;
     }
+    if (live.isSsh) {
+      setState(() => pane = _Pane.session);
+      if (live.filesSidebarOpen) {
+        await _refreshFiles(live);
+      } else {
+        await _openSshFilesSidebar(live);
+      }
+      return;
+    }
     setState(() => pane = _Pane.files);
     if (live.explorerPath.isEmpty) {
       try {
-        final start = live.isSsh
-            ? await live.ssh!.homeDir()
-            : RdpSessionService.sharePath;
+        final start = RdpSessionService.sharePath;
         if (!mounted) return;
         live.explorerPath = start;
       } catch (error) {
@@ -494,11 +562,45 @@ class _WorkspacePageState extends State<WorkspacePage> {
         return;
       }
     }
-    await _refreshFiles();
+    await _refreshFiles(live);
   }
 
-  Future<void> _refreshFiles() async {
-    final live = focused;
+  Widget _buildFilesPane(LiveSession live,
+      {required bool compact, VoidCallback? onClose}) {
+    final canGoUp = live.explorerPath.isNotEmpty &&
+        live.explorerPath != '/' &&
+        !(!live.isSsh && live.explorerPath == RdpSessionService.sharePath);
+    return _FilesPane(
+      ssh: live.isSsh && live.connected,
+      rdp: !live.isSsh && live.connected,
+      path: live.explorerPath,
+      entries: live.explorerEntries,
+      selectedPaths: live.selectedPaths,
+      clipboard: live.clipboard,
+      busy: live.explorerBusy,
+      canGoUp: canGoUp,
+      compact: compact,
+      following: live.followTerminalCwd,
+      autofocus: !compact,
+      onClose: onClose,
+      onFollow: live.isSsh ? () => _syncExplorerToTerminal(live) : null,
+      onOpen: (path) => _openExplorerPath(path, target: live),
+      onUp: () => _goExplorerUp(target: live),
+      onSelect: (entry, {required toggle}) =>
+          _selectEntry(entry, toggle: toggle, target: live),
+      onCopy: () => _copySelection(cut: false, target: live),
+      onCut: () => _copySelection(cut: true, target: live),
+      onPaste: () => _pasteClipboard(target: live),
+      onUpload: () => _pickAndUpload(target: live),
+      onNewFolder: () => _createRemoteFolder(target: live),
+      onRename: () => _renameSelection(target: live),
+      onPermissions: () => _chmodSelection(target: live),
+      onRefresh: () => _refreshFiles(live),
+    );
+  }
+
+  Future<void> _refreshFiles([LiveSession? target]) async {
+    final live = target ?? focused;
     if (live == null || !live.connected || live.explorerPath.isEmpty) return;
     setState(() => live.explorerBusy = true);
     try {
@@ -519,8 +621,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
     }
   }
 
-  Future<void> _openExplorerPath(String path) async {
-    final live = focused;
+  Future<void> _openExplorerPath(String path, {LiveSession? target}) async {
+    final live = target ?? focused;
     if (live == null) return;
     if (!live.isSsh && !path.startsWith(RdpSessionService.sharePath)) {
       path = RdpSessionService.sharePath;
@@ -528,25 +630,29 @@ class _WorkspacePageState extends State<WorkspacePage> {
     setState(() {
       live.explorerPath = path;
       live.selectedPaths.clear();
+      if (live.isSsh) live.followTerminalCwd = false;
     });
-    await _refreshFiles();
+    await _refreshFiles(live);
   }
 
-  Future<void> _goExplorerUp() async {
-    final live = focused;
+  Future<void> _goExplorerUp({LiveSession? target}) async {
+    final live = target ?? focused;
     if (live == null || live.explorerPath.isEmpty) return;
     if (!live.isSsh && live.explorerPath == RdpSessionService.sharePath) return;
     if (live.isSsh && live.explorerPath == '/') return;
-    await _openExplorerPath(RemoteEntry.parent(live.explorerPath));
+    await _openExplorerPath(RemoteEntry.parent(live.explorerPath),
+        target: live);
   }
 
-  void _selectEntry(RemoteEntry entry, {required bool toggle}) {
-    final live = focused;
+  void _selectEntry(RemoteEntry entry,
+      {required bool toggle, LiveSession? target}) {
+    final live = target ?? focused;
     if (live == null) return;
     setState(() {
       if (toggle) {
-        if (!live.selectedPaths.remove(entry.path))
+        if (!live.selectedPaths.remove(entry.path)) {
           live.selectedPaths.add(entry.path);
+        }
       } else {
         live.selectedPaths
           ..clear()
@@ -555,8 +661,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
     });
   }
 
-  void _copySelection({required bool cut}) {
-    final live = focused;
+  void _copySelection({required bool cut, LiveSession? target}) {
+    final live = target ?? focused;
     if (live == null || live.selectedPaths.isEmpty) {
       showMessage('اول یک فایل یا پوشه را انتخاب کنید');
       return;
@@ -572,8 +678,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
         : 'کپی شد — به پوشه مقصد بروید و Paste کنید');
   }
 
-  Future<void> _pasteClipboard() async {
-    final live = focused;
+  Future<void> _pasteClipboard({LiveSession? target}) async {
+    final live = target ?? focused;
     final clip = live?.clipboard;
     if (live == null || clip == null || clip.isEmpty) {
       showMessage('چیزی برای چسباندن نیست');
@@ -604,7 +710,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
       }
       if (clip.cut && mounted) setState(() => live.clipboard = null);
       if (mounted) showMessage(clip.cut ? 'منتقل شد' : 'کپی شد');
-      await _refreshFiles();
+      await _refreshFiles(live);
     } catch (error) {
       await AppLog.line('paste failed: $error');
       if (mounted) showMessage('عملیات فایل ناموفق بود: $error');
@@ -613,8 +719,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
     }
   }
 
-  Future<void> _createRemoteFolder() async {
-    final live = focused;
+  Future<void> _createRemoteFolder({LiveSession? target}) async {
+    final live = target ?? focused;
     if (live == null || !live.connected) {
       showMessage('Connect a session first');
       return;
@@ -638,7 +744,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
         await live.rdp!.mkdirShared(live.explorerPath, folderName);
       }
       if (mounted) showMessage('Folder created');
-      await _refreshFiles();
+      await _refreshFiles(live);
     } catch (error) {
       await AppLog.line('mkdir failed: $error');
       if (mounted) showMessage('Could not create folder: $error');
@@ -647,8 +753,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
     }
   }
 
-  Future<void> _renameSelection() async {
-    final live = focused;
+  Future<void> _renameSelection({LiveSession? target}) async {
+    final live = target ?? focused;
     if (live == null || !live.connected) {
       showMessage('Connect a session first');
       return;
@@ -676,7 +782,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
         ..clear()
         ..add(RemoteEntry.join(RemoteEntry.parent(path), newName.trim()));
       if (mounted) showMessage('Renamed');
-      await _refreshFiles();
+      await _refreshFiles(live);
     } catch (error) {
       await AppLog.line('rename failed: $error');
       if (mounted) showMessage('Rename failed: $error');
@@ -685,8 +791,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
     }
   }
 
-  Future<void> _chmodSelection() async {
-    final live = focused;
+  Future<void> _chmodSelection({LiveSession? target}) async {
+    final live = target ?? focused;
     if (live == null || !live.connected) {
       showMessage('Connect a session first');
       return;
@@ -717,16 +823,18 @@ class _WorkspacePageState extends State<WorkspacePage> {
     setState(() => live.explorerBusy = true);
     try {
       if (live.isSsh) {
-        await live.ssh!.chmodRemote(paths, mode: result.mode, recursive: result.recursive);
+        await live.ssh!
+            .chmodRemote(paths, mode: result.mode, recursive: result.recursive);
       } else {
-        await live.rdp!.chmodShared(paths, mode: result.mode, recursive: result.recursive);
+        await live.rdp!.chmodShared(paths,
+            mode: result.mode, recursive: result.recursive);
       }
       if (mounted) {
         showMessage(result.recursive
             ? 'Permissions ${result.mode} applied recursively'
             : 'Permissions ${result.mode} applied');
       }
-      await _refreshFiles();
+      await _refreshFiles(live);
     } catch (error) {
       await AppLog.line('chmod failed: $error');
       if (mounted) showMessage('Permission change failed: $error');
@@ -735,8 +843,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
     }
   }
 
-  Future<void> _pickAndUpload() async {
-    final live = focused;
+  Future<void> _pickAndUpload({LiveSession? target}) async {
+    final live = target ?? focused;
     await AppLog.line(
         'upload click ssh=$sshConnected rdp=$rdpConnected path=${live?.explorerPath}');
     if (live == null || !live.connected) {
@@ -755,7 +863,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
         await live.rdp!.shareLocalFile(file.path, destDir: live.explorerPath);
         if (mounted) showMessage('فایل در درایو اشتراکی قرار گرفت');
       }
-      await _refreshFiles();
+      await _refreshFiles(live);
     } catch (error) {
       await AppLog.line('upload failed: $error');
       if (mounted) showMessage('ارسال فایل ناموفق بود: $error');
@@ -792,6 +900,15 @@ class _WorkspacePageState extends State<WorkspacePage> {
         .copyWith(folder: original.folder);
     await _replaceSession(original, updated);
     showMessage('تنظیمات session ذخیره شد');
+  }
+
+  Future<void> _changeTabColor(String liveId, int? tabColorArgb) async {
+    final liveIndex = openSessions.indexWhere((item) => item.id == liveId);
+    if (liveIndex < 0) return;
+    final live = openSessions[liveIndex];
+    final original = live.bookmark;
+    final updated = original.copyWith(tabColor: tabColorArgb);
+    await _replaceSession(original, updated);
   }
 
   Future<void> _showAbout() async {
@@ -862,47 +979,68 @@ class _WorkspacePageState extends State<WorkspacePage> {
                           if (match.isNotEmpty) _closeLive(match.first);
                         },
                         onFiles: _openFilesPane,
+                        onChangeTabColor: _changeTabColor,
                       ),
                       Expanded(
                         child: IndexedStack(
                           index: paneIndex,
                           children: [
                             const _WelcomePane(),
-                            _FilesPane(
-                              ssh: sshConnected,
-                              rdp: rdpConnected,
-                              path: live?.explorerPath ?? '',
-                              entries: live?.explorerEntries ?? const [],
-                              selectedPaths: live?.selectedPaths ?? {},
-                              clipboard: live?.clipboard,
-                              busy: live?.explorerBusy ?? false,
-                              canGoUp: live != null &&
-                                  live.explorerPath.isNotEmpty &&
-                                  live.explorerPath != '/' &&
-                                  !(!live.isSsh &&
-                                      live.explorerPath ==
-                                          RdpSessionService.sharePath),
-                              onOpen: _openExplorerPath,
-                              onUp: _goExplorerUp,
-                              onSelect: _selectEntry,
-                              onCopy: () => _copySelection(cut: false),
-                              onCut: () => _copySelection(cut: true),
-                              onPaste: _pasteClipboard,
-                              onUpload: _pickAndUpload,
-                              onNewFolder: _createRemoteFolder,
-                              onRename: _renameSelection,
-                              onPermissions: _chmodSelection,
-                              onRefresh: _refreshFiles,
-                            ),
-                            ...openSessions.map((item) => _SessionSurface(
-                                  key: ValueKey(item.id),
-                                  snapshot: item.snapshot,
-                                  session: item.bookmark,
-                                  terminal: item.terminal,
-                                  onDisconnect: () => _closeLive(item),
-                                  onRetry: () => _connectSession(item.bookmark,
-                                      prompt: true),
-                                )),
+                            live == null
+                                ? const ColoredBox(
+                                    color: Color(0xFF1A1A1A),
+                                    child: Center(
+                                      child: Text('Connect a session to browse files',
+                                          style: TextStyle(color: Colors.white38)),
+                                    ),
+                                  )
+                                : _buildFilesPane(live, compact: false),
+                            ...openSessions.map((item) {
+                              final showSidebar = item.isSsh &&
+                                  item.connected &&
+                                  item.filesSidebarOpen;
+                              return Row(
+                                key: ValueKey(item.id),
+                                children: [
+                                  Expanded(
+                                    child: _SessionSurface(
+                                      snapshot: item.snapshot,
+                                      session: item.bookmark,
+                                      terminal: item.terminal,
+                                      onDisconnect: () => _closeLive(item),
+                                      onRetry: () => _connectSession(
+                                          item.bookmark,
+                                          prompt: true),
+                                      onToggleFiles:
+                                          item.isSsh && item.connected
+                                              ? () => _toggleFilesSidebar(item)
+                                              : null,
+                                      filesOpen: showSidebar,
+                                    ),
+                                  ),
+                                  if (showSidebar) ...[
+                                    _SidebarResizeHandle(
+                                      onDrag: (delta) {
+                                        setState(() {
+                                          item.filesSidebarWidth =
+                                              (item.filesSidebarWidth - delta)
+                                                  .clamp(220.0, 640.0);
+                                        });
+                                      },
+                                    ),
+                                    SizedBox(
+                                      width: item.filesSidebarWidth,
+                                      child: _buildFilesPane(
+                                        item,
+                                        compact: true,
+                                        onClose: () =>
+                                            _toggleFilesSidebar(item),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              );
+                            }),
                           ],
                         ),
                       ),
@@ -949,18 +1087,18 @@ class _ToolBar extends StatelessWidget {
             label: 'Files',
             color: Colors.orangeAccent,
             onTap: onFiles),
+        _ToolBtn(icon: Icons.fullscreen, label: 'Fullscreen', onTap: () {}),
+        _ToolBtn(
+          icon: Icons.link_off,
+          label: 'Disconnect',
+          color: connected ? Colors.redAccent : Colors.white38,
+          onTap: onDisconnect,
+        ),
         _ToolBtn(
             icon: Icons.info_outline,
             label: 'About',
             color: Colors.lightBlueAccent,
             onTap: onAbout),
-        _ToolBtn(icon: Icons.fullscreen, label: 'Fullscreen', onTap: () {}),
-        _ToolBtn(
-          icon: Icons.link_off,
-          label: 'Stop',
-          color: connected ? Colors.redAccent : Colors.white38,
-          onTap: onDisconnect,
-        ),
       ]),
     );
   }
@@ -1243,6 +1381,7 @@ class _TabStrip extends StatelessWidget {
     required this.onSelect,
     required this.onClose,
     required this.onFiles,
+    this.onChangeTabColor,
   });
   final _Pane pane;
   final List<LiveSession> openSessions;
@@ -1251,6 +1390,7 @@ class _TabStrip extends StatelessWidget {
   final ValueChanged<String> onSelect;
   final ValueChanged<String> onClose;
   final VoidCallback onFiles;
+  final void Function(String liveId, int? tabColorArgb)? onChangeTabColor;
 
   @override
   Widget build(BuildContext context) {
@@ -1267,12 +1407,14 @@ class _TabStrip extends StatelessWidget {
                 _Tab(
                   label: '${live.isSsh ? 'SSH' : 'RDP'} ${live.bookmark.name}',
                   selected: pane == _Pane.session && live.id == focusedId,
-                  color: live.isSsh
-                      ? const Color(0xFF3A3320)
-                      : const Color(0xFF1D4770),
+                  color: live.bookmark.tabBackground,
+                  accent: live.bookmark.accentColor,
                   onTap: () => onSelect(live.id),
                   onClose: () => onClose(live.id),
-          ),
+                  onChangeColor: onChangeTabColor == null
+                      ? null
+                      : (colorArgb) => onChangeTabColor!(live.id, colorArgb),
+                ),
         ],
       ),
         ),
@@ -1283,29 +1425,127 @@ class _TabStrip extends StatelessWidget {
 }
 
 class _Tab extends StatelessWidget {
-  const _Tab(
-      {required this.label,
-      required this.selected,
-      required this.onTap,
-      this.color,
-      this.onClose});
+  const _Tab({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.color,
+    this.accent,
+    this.onClose,
+    this.onChangeColor,
+  });
   final String label;
   final bool selected;
   final VoidCallback onTap;
   final VoidCallback? onClose;
   final Color? color;
+  final Color? accent;
+  final ValueChanged<int?>? onChangeColor;
+
+  Future<void> _pickColor(BuildContext context, Offset position) async {
+    if (onChangeColor == null) return;
+    final chosen = await showMenu<Object>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        position.dx,
+        position.dy,
+        position.dx,
+        position.dy,
+      ),
+      color: Moba.menu,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: Color(0xFF555555)),
+      ),
+      items: [
+        const PopupMenuItem<Object>(
+          value: 'default',
+          height: 40,
+          child: Row(
+            children: [
+              Icon(Icons.palette_outlined, size: 18, color: Colors.white70),
+              SizedBox(width: 10),
+              Text('Protocol default'),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(),
+        for (final c in SavedSession.tabPalette)
+          PopupMenuItem<Object>(
+            value: c.toARGB32(),
+            height: 40,
+            child: Row(
+              children: [
+                Container(
+                  width: 18,
+                  height: 18,
+                  decoration: BoxDecoration(
+                    color: c,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white24),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  '#${c.toARGB32().toRadixString(16).substring(2).toUpperCase()}',
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+    if (chosen == null) return;
+    if (chosen == 'default') {
+      onChangeColor!(null);
+    } else if (chosen is int) {
+      onChangeColor!(chosen);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final accentColor = accent;
     return InkWell(
       onTap: onTap,
+      onSecondaryTapDown: onChangeColor == null
+          ? null
+          : (details) => _pickColor(context, details.globalPosition),
       mouseCursor: WidgetStateMouseCursor.clickable,
       child: Container(
-        padding: EdgeInsets.only(left: 12, right: onClose == null ? 14 : 4),
+        padding: EdgeInsets.only(left: accentColor == null ? 12 : 8, right: onClose == null ? 14 : 4),
         alignment: Alignment.center,
-        color:
-            selected ? (color ?? const Color(0xFF3A3A3A)) : Colors.transparent,
+        decoration: BoxDecoration(
+          color: selected ? (color ?? const Color(0xFF3A3A3A)) : Colors.transparent,
+          border: Border(
+            bottom: BorderSide(
+              color: selected && accentColor != null
+                  ? accentColor
+                  : Colors.transparent,
+              width: 2,
+            ),
+          ),
+        ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (accentColor != null) ...[
+            Container(
+              width: 8,
+              height: 8,
+              margin: const EdgeInsets.only(right: 8),
+              decoration: BoxDecoration(
+                color: accentColor,
+                shape: BoxShape.circle,
+                boxShadow: selected
+                    ? [
+                        BoxShadow(
+                          color: accentColor.withValues(alpha: 0.55),
+                          blurRadius: 6,
+                        )
+                      ]
+                    : null,
+              ),
+            ),
+          ],
           Text(label,
               style: TextStyle(
                   fontSize: 12,
@@ -1319,8 +1559,8 @@ class _Tab extends StatelessWidget {
                 child: Icon(Icons.close, size: 12, color: Colors.white54),
               ),
             ),
-            ]),
-          ),
+        ]),
+      ),
     );
   }
 }
@@ -1600,6 +1840,11 @@ class _FilesPane extends StatelessWidget {
     required this.onRename,
     required this.onPermissions,
     required this.onRefresh,
+    this.compact = false,
+    this.following = false,
+    this.autofocus = true,
+    this.onClose,
+    this.onFollow,
   });
 
   final bool ssh;
@@ -1610,6 +1855,9 @@ class _FilesPane extends StatelessWidget {
   final FileClipboard? clipboard;
   final bool busy;
   final bool canGoUp;
+  final bool compact;
+  final bool following;
+  final bool autofocus;
   final ValueChanged<String> onOpen;
   final VoidCallback onUp;
   final void Function(RemoteEntry entry, {required bool toggle}) onSelect;
@@ -1621,6 +1869,8 @@ class _FilesPane extends StatelessWidget {
   final VoidCallback onRename;
   final VoidCallback onPermissions;
   final VoidCallback onRefresh;
+  final VoidCallback? onClose;
+  final VoidCallback? onFollow;
 
   @override
   Widget build(BuildContext context) {
@@ -1661,179 +1911,296 @@ class _FilesPane extends StatelessWidget {
           }),
         },
         child: Focus(
-          autofocus: true,
+          autofocus: autofocus,
           child: ColoredBox(
-            color: const Color(0xFF1A1A1A),
+            color: compact ? Moba.sidebar : const Color(0xFF1A1A1A),
             child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Container(
-                    height: 36,
-                    color: Moba.toolbar,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Row(children: [
-                      _ExplorerBtn(
-                          icon: Icons.arrow_upward,
-                          label: 'Up',
-                          onTap: ready && canGoUp ? onUp : null),
-                      _ExplorerBtn(
-                          icon: Icons.refresh,
-                          label: 'Refresh',
-                          onTap: ready ? onRefresh : null),
-                      _ExplorerBtn(
-                          icon: Icons.upload,
-                          label: 'Upload',
-                          onTap: ready ? onUpload : null),
-                      _ExplorerBtn(
-                          icon: Icons.create_new_folder_outlined,
-                          label: 'New folder',
-                          onTap: ready ? onNewFolder : null),
-                      const VerticalDivider(width: 16, color: Colors.white24),
-                      _ExplorerBtn(
-                          icon: Icons.copy,
-                          label: 'Copy',
-                          onTap: ready && hasSelection ? onCopy : null),
-                      _ExplorerBtn(
-                          icon: Icons.content_cut,
-                          label: 'Cut',
-                          onTap: ready && hasSelection ? onCut : null),
-                      _ExplorerBtn(
-                          icon: Icons.content_paste,
-                          label: 'Paste',
-                          onTap: ready && canPaste ? onPaste : null),
-                      _ExplorerBtn(
-                          icon: Icons.drive_file_rename_outline,
-                          label: 'Rename',
-                          onTap: ready && canRename ? onRename : null),
-                      _ExplorerBtn(
-                          icon: Icons.lock_outline,
-                          label: 'Permissions',
-                          onTap: ready && hasSelection ? onPermissions : null),
-          const Spacer(),
-                      Text(
-                          ssh
-                              ? 'SCP'
-                              : rdp
-                                  ? 'RDP share'
-                                  : 'Files',
-                          style: const TextStyle(
-                              color: Colors.white54, fontSize: 12)),
-                    ]),
-                  ),
-                  Container(
-                    height: 28,
-                    color: const Color(0xFF2A2A2A),
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      ready
-                          ? RemoteEntry.displayPath(path.isEmpty ? '/' : path)
-                          : 'not connected',
-                      style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 13,
-                          color: Color(0xFF9CDCFE)),
+                  if (compact)
+                    Container(
+                      height: 38,
+                      color: Moba.toolbar,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.folder_open,
+                              size: 16, color: Colors.orangeAccent),
+                          const SizedBox(width: 8),
+                          const Expanded(
+                            child: Text('Remote files',
+                                style: TextStyle(
+                                    fontSize: 12, fontWeight: FontWeight.w600)),
+                          ),
+                          if (onFollow != null)
+                            IconButton(
+                              tooltip: following
+                                  ? 'Following terminal path'
+                                  : 'Sync to terminal path',
+                              onPressed: onFollow,
+                              icon: Icon(
+                                following
+                                    ? Icons.link
+                                    : Icons.link_off,
+                                size: 16,
+                                color: following ? Moba.green : Colors.white54,
+                              ),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints.tightFor(
+                                  width: 28, height: 28),
+                            ),
+                          if (onClose != null)
+                            IconButton(
+                              tooltip: 'Close',
+                              onPressed: onClose,
+                              icon: const Icon(Icons.close, size: 16),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints.tightFor(
+                                  width: 28, height: 28),
+                            ),
+                        ],
+                      ),
                     ),
+                  Container(
+                    height: compact ? 34 : 36,
+                    color: Moba.toolbar,
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: compact
+                        ? ListView(
+                            scrollDirection: Axis.horizontal,
+                            children: [
+                              _ExplorerIconBtn(
+                                  icon: Icons.arrow_upward,
+                                  tooltip: 'Up',
+                                  onTap: ready && canGoUp ? onUp : null),
+                              _ExplorerIconBtn(
+                                  icon: Icons.refresh,
+                                  tooltip: 'Refresh',
+                                  onTap: ready ? onRefresh : null),
+                              _ExplorerIconBtn(
+                                  icon: Icons.upload,
+                                  tooltip: 'Upload',
+                                  onTap: ready ? onUpload : null),
+                              _ExplorerIconBtn(
+                                  icon: Icons.create_new_folder_outlined,
+                                  tooltip: 'New folder',
+                                  onTap: ready ? onNewFolder : null),
+                              _ExplorerIconBtn(
+                                  icon: Icons.copy,
+                                  tooltip: 'Copy',
+                                  onTap: ready && hasSelection ? onCopy : null),
+                              _ExplorerIconBtn(
+                                  icon: Icons.content_cut,
+                                  tooltip: 'Cut',
+                                  onTap: ready && hasSelection ? onCut : null),
+                              _ExplorerIconBtn(
+                                  icon: Icons.content_paste,
+                                  tooltip: 'Paste',
+                                  onTap: ready && canPaste ? onPaste : null),
+                              _ExplorerIconBtn(
+                                  icon: Icons.drive_file_rename_outline,
+                                  tooltip: 'Rename',
+                                  onTap:
+                                      ready && canRename ? onRename : null),
+                              _ExplorerIconBtn(
+                                  icon: Icons.lock_outline,
+                                  tooltip: 'Permissions',
+                                  onTap: ready && hasSelection
+                                      ? onPermissions
+                                      : null),
+                            ],
+                          )
+                        : Row(children: [
+                            _ExplorerBtn(
+                                icon: Icons.arrow_upward,
+                                label: 'Up',
+                                onTap: ready && canGoUp ? onUp : null),
+                            _ExplorerBtn(
+                                icon: Icons.refresh,
+                                label: 'Refresh',
+                                onTap: ready ? onRefresh : null),
+                            _ExplorerBtn(
+                                icon: Icons.upload,
+                                label: 'Upload',
+                                onTap: ready ? onUpload : null),
+                            _ExplorerBtn(
+                                icon: Icons.create_new_folder_outlined,
+                                label: 'New folder',
+                                onTap: ready ? onNewFolder : null),
+                            const VerticalDivider(
+                                width: 16, color: Colors.white24),
+                            _ExplorerBtn(
+                                icon: Icons.copy,
+                                label: 'Copy',
+                                onTap:
+                                    ready && hasSelection ? onCopy : null),
+                            _ExplorerBtn(
+                                icon: Icons.content_cut,
+                                label: 'Cut',
+                                onTap: ready && hasSelection ? onCut : null),
+                            _ExplorerBtn(
+                                icon: Icons.content_paste,
+                                label: 'Paste',
+                                onTap: ready && canPaste ? onPaste : null),
+                            _ExplorerBtn(
+                                icon: Icons.drive_file_rename_outline,
+                                label: 'Rename',
+                                onTap:
+                                    ready && canRename ? onRename : null),
+                            _ExplorerBtn(
+                                icon: Icons.lock_outline,
+                                label: 'Permissions',
+                                onTap: ready && hasSelection
+                                    ? onPermissions
+                                    : null),
+                            const Spacer(),
+                            Text(
+                                ssh
+                                    ? 'SCP'
+                                    : rdp
+                                        ? 'RDP share'
+                                        : 'Files',
+                                style: const TextStyle(
+                                    color: Colors.white54, fontSize: 12)),
+                          ]),
                   ),
                   Container(
-                    height: 24,
-                    color: const Color(0xFF333333),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    height: compact ? 28 : 30,
+                    color: const Color(0xFF2A2A2A),
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
                     alignment: Alignment.centerLeft,
-                    child: const Text('Name',
-                        style: TextStyle(
-                            fontSize: 12, fontWeight: FontWeight.w600)),
+                    child: ready
+                        ? _PathBreadcrumb(
+                            path: path.isEmpty ? '/' : path,
+                            following: following,
+                            compact: compact,
+                            onOpen: onOpen,
+                          )
+                        : Text(
+                            'not connected',
+                            style: TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: compact ? 11 : 13,
+                              color: Colors.white38,
+                            ),
+                          ),
                   ),
+                  if (!compact)
+                    Container(
+                      height: 24,
+                      color: const Color(0xFF333333),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      alignment: Alignment.centerLeft,
+                      child: const Text('Name',
+                          style: TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w600)),
+                    ),
                   Expanded(
                     child: !ready
                         ? const Center(
                             child: Text('اول یک جلسه را وصل کنید',
                                 style: TextStyle(color: Colors.white38)))
                         : Stack(children: [
-                            GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onSecondaryTapDown: ready
-                                  ? (details) async {
-                                      final action = await _showAppMenu(
-                                        context,
-                                        details.globalPosition,
-                                        [
-                                          const _CtxItem(
-                                            value: 'mkdir',
-                                            label: 'New folder',
-                                            icon: Icons.create_new_folder_outlined,
-                                          ),
-                                          if (canPaste)
-                                            const _CtxItem(
-                                              value: 'paste',
-                                              label: 'Paste',
-                                              icon: Icons.content_paste,
-                                              shortcut: 'Ctrl+V',
-                                              dividerBefore: true,
-                                            ),
-                                          const _CtxItem(
-                                            value: 'refresh',
-                                            label: 'Refresh',
-                                            icon: Icons.refresh,
-                                            shortcut: 'F5',
-                                            dividerBefore: true,
-                                          ),
-                                        ],
-                                      );
-                                      switch (action) {
-                                        case 'mkdir':
-                                          onNewFolder();
-                                        case 'paste':
-                                          onPaste();
-                                        case 'refresh':
-                                          onRefresh();
+                            CustomScrollView(
+                              slivers: [
+                                SliverList(
+                                  delegate: SliverChildBuilderDelegate(
+                                    (context, index) {
+                                      if (canGoUp && index == 0) {
+                                        return _FileRow(
+                                          name: '..',
+                                          directory: true,
+                                          selected: false,
+                                          cut: false,
+                                          compact: compact,
+                                          onTap: onUp,
+                                          onDoubleTap: onUp,
+                                          onNewFolder: onNewFolder,
+                                          onPaste: canPaste ? onPaste : null,
+                                          onRefresh: onRefresh,
+                                        );
                                       }
-                                    }
-                                  : null,
-                              child: ListView.builder(
-                              itemCount: entries.length + (canGoUp ? 1 : 0),
-                              itemBuilder: (context, index) {
-                                if (canGoUp && index == 0) {
-                                  return _FileRow(
-                                    name: '..',
-                                    directory: true,
-                                    selected: false,
-                                    cut: false,
-                                    onTap: onUp,
-                                    onDoubleTap: onUp,
-                                    onNewFolder: onNewFolder,
-                                    onPaste: canPaste ? onPaste : null,
-                                  );
-                                }
-                                final entry =
-                                    entries[index - (canGoUp ? 1 : 0)];
-                                final selected =
-                                    selectedPaths.contains(entry.path);
-                                final cut = clipboard != null &&
-                                    clipboard!.cut &&
-                                    clipboard!.paths.contains(entry.path);
-                                return _FileRow(
-                                  name: entry.name,
-                                  directory: entry.isDirectory,
-                                  selected: selected,
-                                  cut: cut,
-                                  onTap: () => onSelect(entry,
-                                      toggle: HardwareKeyboard
-                                          .instance.isControlPressed),
-                                  onDoubleTap: entry.isDirectory
-                                      ? () => onOpen(entry.path)
-                                      : null,
-                                  onCopy: onCopy,
-                                  onCut: onCut,
-                                  onPaste: canPaste ? onPaste : null,
-                                  onNewFolder: onNewFolder,
-                                  onRename: canRename || selected
-                                      ? onRename
-                                      : null,
-                                  onPermissions: onPermissions,
-                                );
-                              },
-                            ),
+                                      final entry =
+                                          entries[index - (canGoUp ? 1 : 0)];
+                                      final selected =
+                                          selectedPaths.contains(entry.path);
+                                      final cut = clipboard != null &&
+                                          clipboard!.cut &&
+                                          clipboard!.paths
+                                              .contains(entry.path);
+                                      return _FileRow(
+                                        name: entry.name,
+                                        directory: entry.isDirectory,
+                                        selected: selected,
+                                        cut: cut,
+                                        compact: compact,
+                                        onTap: () => onSelect(entry,
+                                            toggle: HardwareKeyboard
+                                                .instance.isControlPressed),
+                                        onDoubleTap: entry.isDirectory
+                                            ? () => onOpen(entry.path)
+                                            : null,
+                                        onCopy: onCopy,
+                                        onCut: onCut,
+                                        onPaste: canPaste ? onPaste : null,
+                                        onNewFolder: onNewFolder,
+                                        onRename: canRename || selected
+                                            ? onRename
+                                            : null,
+                                        onPermissions: onPermissions,
+                                        onRefresh: onRefresh,
+                                      );
+                                    },
+                                    childCount:
+                                        entries.length + (canGoUp ? 1 : 0),
+                                  ),
+                                ),
+                                SliverFillRemaining(
+                                  hasScrollBody: false,
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onSecondaryTapDown: ready
+                                        ? (details) async {
+                                            final action = await _showAppMenu(
+                                              context,
+                                              details.globalPosition,
+                                              [
+                                                const _CtxItem(
+                                                  value: 'mkdir',
+                                                  label: 'New folder',
+                                                  icon: Icons
+                                                      .create_new_folder_outlined,
+                                                ),
+                                                if (canPaste)
+                                                  const _CtxItem(
+                                                    value: 'paste',
+                                                    label: 'Paste',
+                                                    icon: Icons.content_paste,
+                                                    shortcut: 'Ctrl+V',
+                                                    dividerBefore: true,
+                                                  ),
+                                                const _CtxItem(
+                                                  value: 'refresh',
+                                                  label: 'Refresh',
+                                                  icon: Icons.refresh,
+                                                  shortcut: 'F5',
+                                                  dividerBefore: true,
+                                                ),
+                                              ],
+                                            );
+                                            switch (action) {
+                                              case 'mkdir':
+                                                onNewFolder();
+                                              case 'paste':
+                                                onPaste();
+                                              case 'refresh':
+                                                onRefresh();
+                                            }
+                                          }
+                                        : null,
+                                  ),
+                                ),
+                              ],
                             ),
                             if (busy)
                               const ColoredBox(
@@ -1898,6 +2265,160 @@ class _ExplorerBtn extends StatelessWidget {
                   fontSize: 12,
                   color: onTap == null ? Colors.white24 : Colors.white70)),
         ]),
+      ),
+    );
+  }
+}
+
+class _ExplorerIconBtn extends StatelessWidget {
+  const _ExplorerIconBtn({required this.icon, required this.tooltip, this.onTap});
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        mouseCursor: WidgetStateMouseCursor.clickable,
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          child: Icon(icon,
+              size: 15, color: onTap == null ? Colors.white24 : Colors.white70),
+        ),
+      ),
+    );
+  }
+}
+
+class _SidebarResizeHandle extends StatefulWidget {
+  const _SidebarResizeHandle({required this.onDrag});
+
+  final ValueChanged<double> onDrag;
+
+  @override
+  State<_SidebarResizeHandle> createState() => _SidebarResizeHandleState();
+}
+
+class _SidebarResizeHandleState extends State<_SidebarResizeHandle> {
+  bool _hover = false;
+  bool _dragging = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = _hover || _dragging;
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeColumn,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragStart: (_) => setState(() => _dragging = true),
+        onHorizontalDragUpdate: (details) => widget.onDrag(details.delta.dx),
+        onHorizontalDragEnd: (_) => setState(() => _dragging = false),
+        onHorizontalDragCancel: () => setState(() => _dragging = false),
+        child: SizedBox(
+          width: 5,
+          child: Center(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              width: active ? 3 : 1,
+              color: active ? Moba.green : const Color(0xFF3A3A3A),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PathBreadcrumb extends StatelessWidget {
+  const _PathBreadcrumb({
+    required this.path,
+    required this.onOpen,
+    this.following = false,
+    this.compact = false,
+  });
+
+  final String path;
+  final ValueChanged<String> onOpen;
+  final bool following;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final crumbs = RemoteEntry.breadcrumbs(path);
+    final accent =
+        following ? const Color(0xFF98C379) : const Color(0xFF9CDCFE);
+    final muted = Colors.white38;
+    final fontSize = compact ? 11.0 : 13.0;
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      reverse: true,
+      child: Row(
+        children: [
+          for (var i = 0; i < crumbs.length; i++) ...[
+            if (i > 0)
+              Icon(Icons.chevron_right, size: fontSize + 2, color: muted),
+            _BreadcrumbChip(
+              label: crumbs[i].label,
+              current: i == crumbs.length - 1,
+              accent: accent,
+              muted: muted,
+              fontSize: fontSize,
+              onTap: () {
+                if (crumbs[i].path != path) onOpen(crumbs[i].path);
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _BreadcrumbChip extends StatelessWidget {
+  const _BreadcrumbChip({
+    required this.label,
+    required this.current,
+    required this.accent,
+    required this.muted,
+    required this.fontSize,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool current;
+  final Color accent;
+  final Color muted;
+  final double fontSize;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: current ? null : onTap,
+      mouseCursor: current
+          ? SystemMouseCursors.basic
+          : WidgetStateMouseCursor.clickable,
+      borderRadius: BorderRadius.circular(4),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontFamily: 'monospace',
+            fontSize: fontSize,
+            fontWeight: current ? FontWeight.w600 : FontWeight.w400,
+            color: current ? accent : accent.withValues(alpha: 0.85),
+            decoration: current ? null : TextDecoration.underline,
+            decorationColor: accent.withValues(alpha: 0.35),
+          ),
+        ),
       ),
     );
   }
@@ -2028,6 +2549,7 @@ class _FileRow extends StatelessWidget {
     required this.selected,
     required this.cut,
     required this.onTap,
+    this.compact = false,
     this.onDoubleTap,
     this.onCopy,
     this.onCut,
@@ -2035,12 +2557,14 @@ class _FileRow extends StatelessWidget {
     this.onNewFolder,
     this.onRename,
     this.onPermissions,
+    this.onRefresh,
   });
 
   final String name;
   final bool directory;
   final bool selected;
   final bool cut;
+  final bool compact;
   final VoidCallback onTap;
   final VoidCallback? onDoubleTap;
   final VoidCallback? onCopy;
@@ -2049,6 +2573,7 @@ class _FileRow extends StatelessWidget {
   final VoidCallback? onNewFolder;
   final VoidCallback? onRename;
   final VoidCallback? onPermissions;
+  final VoidCallback? onRefresh;
 
   IconData get _icon {
     if (directory) return Icons.folder;
@@ -2066,7 +2591,8 @@ class _FileRow extends StatelessWidget {
         onPaste != null ||
         onNewFolder != null ||
         onRename != null ||
-        onPermissions != null;
+        onPermissions != null ||
+        onRefresh != null;
     return InkWell(
       onTap: onTap,
       onDoubleTap: onDoubleTap,
@@ -2124,6 +2650,14 @@ class _FileRow extends StatelessWidget {
                     label: 'Permissions…',
                     icon: Icons.lock_outline,
                   ),
+                if (onRefresh != null)
+                  const _CtxItem(
+                    value: 'refresh',
+                    label: 'Refresh',
+                    icon: Icons.refresh,
+                    shortcut: 'F5',
+                    dividerBefore: true,
+                  ),
               ];
               final action =
                   await _showAppMenu(context, details.globalPosition, items);
@@ -2142,15 +2676,18 @@ class _FileRow extends StatelessWidget {
                   onRename?.call();
                 case 'chmod':
                   onPermissions?.call();
+                case 'refresh':
+                  onRefresh?.call();
               }
             },
       mouseCursor: WidgetStateMouseCursor.clickable,
       child: Container(
         color: selected ? Moba.green.withValues(alpha: 0.28) : null,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        padding: EdgeInsets.symmetric(
+            horizontal: compact ? 8 : 10, vertical: compact ? 4 : 5),
         child: Row(children: [
           Icon(_icon,
-              size: 18,
+              size: compact ? 16 : 18,
               color: directory ? const Color(0xFFE6B422) : Colors.white70),
           const SizedBox(width: 8),
           Expanded(
@@ -2297,6 +2834,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
   final password = TextEditingController();
   bool showPassword = false;
   late bool savePassword;
+  int? tabColor;
 
   @override
   void initState() {
@@ -2310,6 +2848,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
         '${initial?.port ?? (protocol == SessionProtocol.ssh ? 22 : 3389)}';
     password.text = initial?.password ?? '';
     savePassword = initial?.hasSavedPassword ?? true;
+    tabColor = initial?.tabColor;
   }
 
   @override
@@ -2353,6 +2892,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
             (protocol == SessionProtocol.ssh ? 22 : 3389),
         username: user.text.trim(),
         protocol: protocol,
+        tabColor: tabColor,
       ),
       password: password.text,
       savePassword: savePassword,
@@ -2365,7 +2905,8 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
       title: Text(widget.initial == null ? 'New session' : 'Edit session'),
       content: SizedBox(
         width: 420,
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
           SegmentedButton<SessionProtocol>(
             segments: const [
               ButtonSegment(
@@ -2428,7 +2969,90 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
             controlAffinity: ListTileControlAffinity.leading,
             title: const Text('Save password'),
           ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Tab color',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.white.withValues(alpha: 0.7),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Tooltip(
+                message: 'Protocol default',
+                child: InkWell(
+                  onTap: () => setState(() => tabColor = null),
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: tabColor == null ? Moba.green : Colors.white24,
+                        width: tabColor == null ? 2 : 1,
+                      ),
+                      gradient: const SweepGradient(colors: [
+                        Color(0xFFE6B422),
+                        Color(0xFF5B9BD5),
+                        Color(0xFF3D9970),
+                        Color(0xFFE06C75),
+                        Color(0xFFE6B422),
+                      ]),
+                    ),
+                    child: tabColor == null
+                        ? const Icon(Icons.check, size: 14, color: Colors.white)
+                        : null,
+                  ),
+                ),
+              ),
+              for (final c in SavedSession.tabPalette)
+                Tooltip(
+                  message:
+                      '#${c.toARGB32().toRadixString(16).substring(2).toUpperCase()}',
+                  child: InkWell(
+                    onTap: () => setState(() => tabColor = c.toARGB32()),
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: c,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: tabColor == c.toARGB32()
+                              ? Colors.white
+                              : Colors.white24,
+                          width: tabColor == c.toARGB32() ? 2.5 : 1,
+                        ),
+                        boxShadow: tabColor == c.toARGB32()
+                            ? [
+                                BoxShadow(
+                                  color: c.withValues(alpha: 0.55),
+                                  blurRadius: 8,
+                                )
+                              ]
+                            : null,
+                      ),
+                      child: tabColor == c.toARGB32()
+                          ? const Icon(Icons.check,
+                              size: 14, color: Colors.white)
+                          : null,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ]),
+        ),
       ),
       actions: [
         TextButton(
@@ -2437,7 +3061,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
         FilledButton.icon(
             onPressed: _submit,
             icon: const Icon(Icons.login),
-            label: const Text('Connect')),
+            label: Text(widget.initial == null ? 'Connect' : 'Save')),
       ],
     );
   }
@@ -2451,6 +3075,8 @@ class _SessionSurface extends StatelessWidget {
     required this.terminal,
     required this.onDisconnect,
     this.onRetry,
+    this.onToggleFiles,
+    this.filesOpen = false,
   });
 
   final ConnectionSnapshot snapshot;
@@ -2458,6 +3084,8 @@ class _SessionSurface extends StatelessWidget {
   final Terminal? terminal;
   final VoidCallback onDisconnect;
   final VoidCallback? onRetry;
+  final VoidCallback? onToggleFiles;
+  final bool filesOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -2471,7 +3099,11 @@ class _SessionSurface extends StatelessWidget {
     if (showTerminal) {
       return ColoredBox(
         color: Moba.terminal,
-        child: SshTerminalPane(terminal: terminal!),
+        child: SshTerminalPane(
+          terminal: terminal!,
+          onToggleFiles: onToggleFiles,
+          filesOpen: filesOpen,
+        ),
       );
     }
     return ColoredBox(

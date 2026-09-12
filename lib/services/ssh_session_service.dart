@@ -44,13 +44,18 @@ class SshSessionService {
   StreamSubscription<Uint8List>? _stdoutSub;
   StreamSubscription<Uint8List>? _stderrSub;
   final _out = StreamController<ConnectionSnapshot>.broadcast();
+  final _cwdOut = StreamController<String>.broadcast();
   ConnectionSnapshot _snapshot = const ConnectionSnapshot(phase: ConnectionPhase.idle);
   Terminal? _terminal;
   bool _stopping = false;
+  String _oscCarry = '';
+  String? _shellCwd;
 
   Stream<ConnectionSnapshot> get changes => _out.stream;
+  Stream<String> get cwdChanges => _cwdOut.stream;
   ConnectionSnapshot get snapshot => _snapshot;
   Terminal? get terminal => _terminal;
+  String? get shellCwd => _shellCwd;
   bool get canTransfer => _client != null && _snapshot.phase == ConnectionPhase.connected;
 
   Future<void> connect(SshConnectionRequest request) async {
@@ -123,7 +128,14 @@ class SshSessionService {
         host: endpoint.host,
         port: endpoint.port,
       ));
-      _enableSessionColors(shell);
+      unawaited(_enableSessionColors(
+        shell,
+        redrawBanner: sshWelcomeBanner(
+          username: request.username.trim(),
+          host: endpoint.host,
+          port: endpoint.port,
+        ),
+      ));
       shell.done.then((_) {
         if (!_stopping && _snapshot.phase == ConnectionPhase.connected) {
           _emit(const ConnectionSnapshot(phase: ConnectionPhase.idle));
@@ -154,24 +166,57 @@ class SshSessionService {
     }
   }
 
-  void _enableSessionColors(SSHSession shell) {
+  Future<void> _enableSessionColors(
+    SSHSession shell, {
+    required String redrawBanner,
+  }) async {
     // Apply styling only to this shell process; nothing is written to the
-    // remote user's profile or persisted on the server.
-    const command = r'''if [ -n "$BASH_VERSION" ]; then
-PS1='\[\e[1;32m\]\u\[\e[0m\]@\[\e[1;34m\]\h\[\e[0m\]:\[\e[38;5;82m\]\w\[\e[0m\]\$ ';
+    // remote user's profile. Echo is disabled so setup is not shown in the
+    // terminal, then the screen is cleared and the welcome banner redrawn.
+    const script = r'''
+__morixtrem_cwd(){ printf '\033]777;cwd;%s\007' "$PWD"; }
+if [ -n "$BASH_VERSION" ]; then
+  PS1='\[\e[1;32m\]\u\[\e[0m\]@\[\e[1;34m\]\h\[\e[0m\]:\[\e[38;5;82m\]\w\[\e[0m\]\$ '
+  PROMPT_COMMAND="__morixtrem_cwd${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
 elif [ -n "$ZSH_VERSION" ]; then
-PROMPT='%F{green}%B%n%b%f@%F{blue}%B%m%b%f:%F{green}%~%f %# ';
+  PROMPT='%F{green}%B%n%b%f@%F{blue}%B%m%b%f:%F{green}%~%f %# '
+  precmd_functions+=(__morixtrem_cwd)
 fi
-alias ls='ls --color=auto'
-alias ll='ls -lah --color=auto'
+alias ls='ls --color=auto' 2>/dev/null || true
+alias ll='ls -lah --color=auto' 2>/dev/null || true
+__morixtrem_cwd 2>/dev/null || true
 ''';
-    shell.write(Uint8List.fromList(utf8.encode('$command\n')));
+    final b64 = base64Encode(utf8.encode(script.trim()));
+    void write(String data) {
+      if (_stopping || !identical(_shell, shell)) return;
+      shell.write(Uint8List.fromList(utf8.encode(data)));
+    }
+
+    // Turn off TTY echo first (this single line may flash briefly).
+    write('stty -echo 2>/dev/null || true\n');
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+    if (_stopping || !identical(_shell, shell)) return;
+
+    // Silent eval of the setup blob (Linux: base64 -d, macOS: base64 -D).
+    write(
+      'eval "\$(echo $b64 | base64 -d 2>/dev/null || echo $b64 | base64 -D 2>/dev/null)"\n',
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+    if (_stopping || !identical(_shell, shell)) return;
+
+    write(r"stty echo 2>/dev/null || true; printf '\033[H\033[2J'");
+    write('\n');
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    if (_stopping || _terminal == null || !identical(_shell, shell)) return;
+    _terminal!.write(redrawBanner);
   }
 
   Future<void> disconnect() async {
     _stopping = true;
     await _closeRemote();
     _terminal = null;
+    _shellCwd = null;
+    _oscCarry = '';
     if (_snapshot.phase != ConnectionPhase.idle) {
       _emit(const ConnectionSnapshot(phase: ConnectionPhase.idle));
     }
@@ -344,10 +389,52 @@ alias ll='ls -lah --color=auto'
   Future<void> dispose() async {
     await disconnect();
     await _out.close();
+    await _cwdOut.close();
   }
 
   void _writeToTerminal(Uint8List data) {
-    _terminal?.write(utf8.decode(data, allowMalformed: true));
+    final text = utf8.decode(data, allowMalformed: true);
+    final filtered = _consumeOscCwd(_oscCarry + text);
+    if (filtered.isNotEmpty) {
+      _terminal?.write(filtered);
+    }
+  }
+
+  String _consumeOscCwd(String input) {
+    final out = StringBuffer();
+    var i = 0;
+    while (i < input.length) {
+      final esc = input.indexOf('\x1b]777;cwd;', i);
+      if (esc < 0) {
+        out.write(input.substring(i));
+        break;
+      }
+      out.write(input.substring(i, esc));
+      final pathStart = esc + '\x1b]777;cwd;'.length;
+      final bel = input.indexOf('\x07', pathStart);
+      final st = input.indexOf('\x1b\\', pathStart);
+      int end;
+      int next;
+      if (bel >= 0 && (st < 0 || bel < st)) {
+        end = bel;
+        next = bel + 1;
+      } else if (st >= 0) {
+        end = st;
+        next = st + 2;
+      } else {
+        // Incomplete OSC — keep for the next chunk.
+        _oscCarry = input.substring(esc);
+        return out.toString();
+      }
+      final path = input.substring(pathStart, end).trim();
+      if (path.isNotEmpty && path != _shellCwd) {
+        _shellCwd = path;
+        if (!_cwdOut.isClosed) _cwdOut.add(path);
+      }
+      i = next;
+    }
+    _oscCarry = '';
+    return out.toString();
   }
 
   Future<void> _closeRemote() async {

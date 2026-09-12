@@ -26,6 +26,26 @@ class RemoteEntry {
     if (path == '/') return '/';
     return path.endsWith('/') ? path : '$path/';
   }
+
+  /// Breadcrumb crumbs for an absolute Unix-style path.
+  /// Each entry is `(label, absolutePath)`.
+  static List<({String label, String path})> breadcrumbs(String path) {
+    final normalized = path.trim().isEmpty ? '/' : path.trim();
+    final crumbs = <({String label, String path})>[
+      (label: '/', path: '/'),
+    ];
+    if (normalized == '/') return crumbs;
+    final parts = normalized
+        .split('/')
+        .where((part) => part.isNotEmpty)
+        .toList(growable: false);
+    var current = '';
+    for (final part in parts) {
+      current = '$current/$part';
+      crumbs.add((label: part, path: current));
+    }
+    return crumbs;
+  }
 }
 
 class FileClipboard {
