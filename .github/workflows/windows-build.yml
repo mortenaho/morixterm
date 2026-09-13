@@ -24,6 +24,14 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Set release version
+        shell: pwsh
+        run: |
+          $version = "0.1.0-build.${{ github.run_number }}"
+          $build = "${{ github.run_number }}"
+          (Get-Content pubspec.yaml) -replace '^version:.*', "version: ${version}+${build}" | Set-Content pubspec.yaml
+          Write-Host "pubspec version -> ${version}+${build}"
+
       - name: Enable Windows desktop
         shell: pwsh
         run: flutter config --enable-windows-desktop
@@ -84,6 +92,13 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Set release version
+        run: |
+          VERSION="0.1.0-build.${{ github.run_number }}"
+          BUILD="${{ github.run_number }}"
+          sed -i "s/^version:.*/version: ${VERSION}+${BUILD}/" pubspec.yaml
+          echo "pubspec version -> ${VERSION}+${BUILD}"
+
       - name: Enable Linux desktop
         run: flutter config --enable-linux-desktop
 
@@ -105,7 +120,7 @@ jobs:
           set -euo pipefail
           package_root="$RUNNER_TEMP/morixterm-deb"
           bundle_dir="build/linux/x64/release/bundle"
-          version="0.1.0-${GITHUB_RUN_NUMBER}"
+          version="0.1.0-build.${GITHUB_RUN_NUMBER}"
           deb_name="morixterm_${version}_amd64.deb"
 
           test -d "$bundle_dir"

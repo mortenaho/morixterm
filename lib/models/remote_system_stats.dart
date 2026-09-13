@@ -19,6 +19,10 @@ class RemoteSystemStats {
 
   int get memUsedKb => (memTotalKb - memAvailableKb).clamp(0, memTotalKb);
 
+  int get memFreeKb => memAvailableKb.clamp(0, memTotalKb);
+
+  int get diskFreeKb => (diskTotalKb - diskUsedKb).clamp(0, diskTotalKb);
+
   double? get memFraction =>
       memTotalKb <= 0 ? null : (memUsedKb / memTotalKb).clamp(0.0, 1.0);
 

@@ -12,6 +12,7 @@ import '../models/remote_system_stats.dart';
 import '../models/saved_session.dart';
 import '../models/upload_job.dart';
 import 'app_log.dart';
+import 'app_version.dart';
 import 'scp_transfer.dart';
 import 'ssh_welcome_banner.dart';
 
@@ -103,7 +104,8 @@ class SshSessionService {
           AppLog.line('SSH host key $type $fingerprint');
           return true;
         },
-        printDebug: (msg) => AppLog.line('SSH debug: $msg'),
+        // Do not use printDebug → AppLog here: dartssh2 emits often and
+        // flushing disk logs on every packet makes typing feel laggy.
         keepAliveInterval: const Duration(seconds: 20),
         handshakeTimeout: const Duration(seconds: 15),
         authTimeout: const Duration(seconds: 15),
@@ -131,6 +133,7 @@ class SshSessionService {
         username: request.username.trim(),
         host: endpoint.host,
         port: endpoint.port,
+        version: AppVersion.label,
       ));
       unawaited(_enableSessionColors(shell));
       shell.done.then((_) {

@@ -38,10 +38,11 @@ class AppLog {
     await _ensureDir();
     final text = '[${DateTime.now().toIso8601String()}] $message\n';
     stderr.writeln(text.trim());
+    // Avoid flush:true — syncing every line stalls the UI/SSH hot path.
     for (final path in lastPaths) {
-      await File(path).writeAsString(text, mode: FileMode.append, flush: true);
+      await File(path).writeAsString(text, mode: FileMode.append);
     }
-    await File(historyPath).writeAsString(text, mode: FileMode.append, flush: true);
+    await File(historyPath).writeAsString(text, mode: FileMode.append);
   }
 
   static Future<void> _ensureDir() async {

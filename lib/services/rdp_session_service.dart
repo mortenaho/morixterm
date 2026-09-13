@@ -31,7 +31,9 @@ class RdpException implements Exception {
   String toString() => message;
 }
 
-/// Starts a real RDP session with FreeRDP (xfreerdp). Remmina is not used.
+/// Starts an RDP desktop window via FreeRDP (bundled or system `xfreerdp`).
+///
+/// No Remmina — FreeRDP opens its own remote-desktop window.
 class RdpSessionService {
   Process? _process;
   StreamSubscription<String>? _stderrSub;
@@ -67,15 +69,21 @@ class RdpSessionService {
       title: request.title,
     ));
 
-    final client = await locateClient();
-    await AppLog.line('FreeRDP binary: ${client ?? 'NOT FOUND'}');
-    if (client == null) {
-      _fail('FreeRDP client not found. Install freerdp-x11.\nLog: ${AppLog.lastPath}');
+    final freerdp = await locateFreeRdpClient();
+    await AppLog.line('RDP FreeRDP binary: ${freerdp ?? 'NOT FOUND'}');
+
+    if (freerdp == null) {
+      _fail(
+        'FreeRDP client not found.\n'
+        'Place xfreerdp next to the app, in linux/vendor/, or install:\n'
+        '  sudo apt install freerdp-x11\n'
+        'Log: ${AppLog.lastPath}',
+      );
       throw RdpException(_snapshot.error!);
     }
 
     try {
-      await _startFreeRdp(client, request, endpoint);
+      await _startFreeRdp(freerdp, request, endpoint);
     } catch (error, stack) {
       await AppLog.line('RDP connect exception: $error');
       await AppLog.line('$stack');
@@ -250,21 +258,39 @@ class RdpSessionService {
     return resolved == base || resolved.startsWith('$base/');
   }
 
-  static Future<String?> locateClient() async {
-    const names = ['xfreerdp3', 'xfreerdp', 'wlfreerdp'];
-    for (final name in names) {
-      final fromPath = await _which(name);
-      if (fromPath != null && !fromPath.contains('remmina')) return fromPath;
-    }
-
+  /// Prefer app-bundled FreeRDP, then PATH — never Remmina.
+  static Future<String?> locateFreeRdpClient() async {
     final home = Platform.environment['HOME'] ?? '';
+    final exeDir = File(Platform.resolvedExecutable).parent.path;
     final bundled = <String>[
+      '$exeDir/xfreerdp',
+      '$exeDir/xfreerdp3',
       if (home.isNotEmpty) '$home/.local/share/morixterm/xfreerdp',
-      '${File(Platform.resolvedExecutable).parent.path}/xfreerdp',
+      if (home.isNotEmpty) '$home/.local/share/morixterm/xfreerdp3',
       '${Directory.current.path}/linux/vendor/xfreerdp',
+      '${Directory.current.path}/linux/vendor/xfreerdp3',
+      // flutter run from project root / build dirs
+      '$exeDir/../../../../linux/vendor/xfreerdp',
+      '$exeDir/../../../../../linux/vendor/xfreerdp',
     ];
     for (final path in bundled) {
-      if (await File(path).exists()) return path;
+      final file = File(path);
+      if (await file.exists()) return file.absolute.path;
+    }
+
+    const names = [
+      'xfreerdp3',
+      'xfreerdp',
+      'wlfreerdp',
+      'wlfreerdp3',
+      'sdl-freerdp',
+      'sdl-freerdp3',
+    ];
+    for (final name in names) {
+      final fromPath = await _which(name);
+      if (fromPath != null && !fromPath.toLowerCase().contains('remmina')) {
+        return fromPath;
+      }
     }
     return null;
   }
@@ -299,7 +325,8 @@ class RdpSessionService {
       } catch (_) {}
     }
 
-    await AppLog.line('RDP command: $client /args-from:file:<temp> /v:${endpoint.host}:${endpoint.port} /u:${request.username.trim()} (password hidden)');
+    await AppLog.line(
+        'RDP command: $client /args-from:file:<temp> /v:${endpoint.host}:${endpoint.port} /u:${request.username.trim()} (password hidden)');
 
     late final Process process;
     try {

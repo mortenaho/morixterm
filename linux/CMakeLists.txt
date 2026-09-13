@@ -126,6 +126,14 @@ install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/runner/resources/morixterm.png"
   DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime)
 
+# Bundle FreeRDP client next to the app so RDP opens without Remmina.
+set(VENDOR_FREERDP "${CMAKE_CURRENT_SOURCE_DIR}/vendor/xfreerdp")
+if(EXISTS "${VENDOR_FREERDP}")
+  install(PROGRAMS "${VENDOR_FREERDP}"
+    DESTINATION "${CMAKE_INSTALL_PREFIX}"
+    COMPONENT Runtime)
+endif()
+
 # Install the AOT library on non-Debug builds only.
 if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
   install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"

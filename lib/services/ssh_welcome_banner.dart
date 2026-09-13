@@ -5,6 +5,7 @@ String sshWelcomeBanner({
   required String username,
   required String host,
   required int port,
+  String version = 'v0.1.0',
 }) {
   const reset = '\x1b[0m';
   const bold = '\x1b[1m';
@@ -28,6 +29,7 @@ String sshWelcomeBanner({
   const border = '\x1b[38;5;60m';
   const label = '\x1b[38;5;110m';
   const ice = '\x1b[38;5;117m';
+  const panel = '\x1b[38;5;66m';
 
   const width = 74;
 
@@ -39,7 +41,12 @@ String sshWelcomeBanner({
   }
 
   String empty() => row('');
-  String rule() => row('  $faint${'-' * (width - 4)}$reset');
+
+  String section(String title) {
+    final mark = '-- $title ';
+    final dash = (width - 4 - mark.length).clamp(2, width);
+    return row('  $faint$mark${'-' * dash}$reset');
+  }
 
   String padRight(String text, int cols) {
     final n = cols - strip(text).length;
@@ -52,19 +59,25 @@ String sshWelcomeBanner({
     return '${text.substring(0, max - 1)}.';
   }
 
+  String panelRow(String content) {
+    final innerWidth = width - 4; // between outer | |
+    final body = '$panel|$reset$content';
+    final pad = (innerWidth - 1 - strip(body).length).clamp(0, innerWidth);
+    return row('  $body${' ' * pad}$panel|$reset');
+  }
+
   final now = DateTime.now().toLocal();
   final stamp =
       '${now.year.toString().padLeft(4, '0')}-'
       '${now.month.toString().padLeft(2, '0')}-'
       '${now.day.toString().padLeft(2, '0')} '
       '${now.hour.toString().padLeft(2, '0')}:'
-      '${now.minute.toString().padLeft(2, '0')}:'
-      '${now.second.toString().padLeft(2, '0')}';
+      '${now.minute.toString().padLeft(2, '0')}';
 
-  final userShort = truncate(username, 20);
-  final hostShort = truncate(host, 36);
+  final userShort = truncate(username, 18);
+  final hostShort = truncate(host, 30);
   final endpoint =
-      '$green$bold$userShort$reset$white@$g3$hostShort$reset$muted:$port$reset';
+      '$green$bold$userShort$reset$white@$g3$hostShort$reset$muted:$ice$port$reset';
 
   // Standard FIGlet-style wordmark — spells MORIXTERM (I, not T).
   final logo = <String>[
@@ -75,66 +88,56 @@ String sshWelcomeBanner({
     row('  $g5|_|  |_| \\___/ |_| \\_\\|___|/_/\\_\\  |_|  |_____||_| \\_\\|_|  |_|$reset'),
   ];
 
-  final leftFeatures = [
-    '$green+$reset Interactive shell',
-    '$green+$reset Multi-session tabs',
-    '$green+$reset Side file browser',
-    '$green+$reset SCP / SFTP upload',
-  ];
-  final rightFeatures = [
-    '$amber>$reset Ctrl+Shift+C   copy',
-    '$amber>$reset Ctrl+Shift+V   paste',
-    '$amber>$reset Toolbar         theme',
-    '$amber>$reset Monitor         stats',
-  ];
-
-  String featureRow(int i) =>
-      row('${padRight('  ${leftFeatures[i]}', 36)}${rightFeatures[i]}');
-
   final lines = <String>[
     '$border+${'=' * width}+$reset',
     empty(),
     ...logo,
     empty(),
     row(
-      '           $dim Connect · Manage · Explore$reset'
-      '                 $faint SSH client$reset',
+      '  $dim SSH workspace$reset'
+      '  $faint·$reset  $soft Connect · Manage · Explore$reset'
+      '            $ice$version$reset',
     ),
     empty(),
-    rule(),
+    section('session'),
     empty(),
     row(
-      '  $green$bold*$reset  $white$bold CONNECTED$reset'
-      '   $greenSoft[ SSH CHANNEL OPEN ]$reset'
-      '              $ice v1.0.0$reset',
+      '  $green$bold*$reset  $white$bold LIVE$reset'
+      '   $greenSoft channel open$reset'
+      '                   $muted SSH-2 encrypted$reset',
     ),
     empty(),
-    row('  $label TARGET$reset    $endpoint'),
-    row('  $label PROTO$reset     $soft SSH-2$reset   $muted· encrypted session$reset'),
-    row('  $label WHEN$reset      $muted$stamp$reset'),
+    row('  $panel+${'-' * (width - 4)}+$reset'),
+    panelRow('  $label host $reset $endpoint'),
+    panelRow('  $label when $reset $muted$stamp$reset'),
+    row('  $panel+${'-' * (width - 4)}+$reset'),
     empty(),
-    rule(),
+    section('workspace'),
     empty(),
     row(
-      '  $g3$bold WORKSPACE$reset'
-      '                             $gold$bold SHORTCUTS$reset',
+      '${padRight('  $g3$bold tools$reset', 36)}'
+      '$gold$bold keys$reset',
     ),
     empty(),
-    featureRow(0),
-    featureRow(1),
-    featureRow(2),
-    featureRow(3),
-    empty(),
-    rule(),
-    empty(),
     row(
-      '  $gold TIP$reset  Use the toolbar heart icon to toggle CPU / RAM / Disk.',
+      '${padRight('  $green+$reset shell    $green+$reset tabs    $green+$reset files', 36)}'
+      '$amber>$reset Ctrl+Shift+C   $muted copy$reset',
     ),
     row(
-      '       $dim Files sidebar can follow your shell working directory.$reset',
+      '${padRight('  $green+$reset upload   $green+$reset monitor $green+$reset theme', 36)}'
+      '$amber>$reset Ctrl+Shift+V   $muted paste$reset',
+    ),
+    empty(),
+    section('tip'),
+    empty(),
+    row(
+      '  $gold*$reset  $soft Heart icon$reset$dim toggles CPU / RAM / Disk monitor.$reset',
     ),
     row(
-      '       $dim Prompt is ready — type a command to get started.$reset',
+      '     $dim Files sidebar can follow your shell working directory.$reset',
+    ),
+    row(
+      '     $white$bold Ready$reset$dim — type a command to get started.$reset',
     ),
     empty(),
     '$border+${'=' * width}+$reset',

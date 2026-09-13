@@ -33,12 +33,8 @@ class _SshTerminalPaneState extends State<SshTerminalPane> {
   var _fontSize = 13.0;
   var _themeMode = _TerminalThemeMode.morixterm;
   var _monitorEnabled = true;
-  var _monitorLoading = false;
-  RemoteSystemStats? _stats;
-  RemoteSystemStats? _prevStats;
-  String? _monitorError;
-  Timer? _monitorTimer;
-  var _polling = false;
+  TerminalStyle? _cachedStyle;
+  double? _cachedFontSize;
 
   TerminalTheme get _theme {
     switch (_themeMode) {
@@ -127,6 +123,26 @@ class _SshTerminalPaneState extends State<SshTerminalPane> {
     }
   }
 
+  TerminalStyle get _style {
+    if (_cachedStyle != null && _cachedFontSize == _fontSize) {
+      return _cachedStyle!;
+    }
+    _cachedFontSize = _fontSize;
+    // Prefer fonts that exist on Linux to avoid per-glyph fallback scanning.
+    _cachedStyle = TerminalStyle(
+      fontSize: _fontSize,
+      fontFamily: 'Noto Sans Mono',
+      fontFamilyFallback: const [
+        'DejaVu Sans Mono',
+        'Liberation Mono',
+        'Ubuntu Sans Mono',
+        'Cascadia Mono',
+        'monospace',
+      ],
+    );
+    return _cachedStyle!;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -143,67 +159,18 @@ class _SshTerminalPaneState extends State<SshTerminalPane> {
         oldWidget.filesOpen != widget.filesOpen) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _focusTerminal());
     }
-    if (oldWidget.fetchSystemStats != widget.fetchSystemStats) {
-      _syncMonitorTimer();
-    }
   }
 
   Future<void> _loadMonitorPreference() async {
     final enabled = await _storage.loadSystemMonitorEnabled();
     if (!mounted) return;
     setState(() => _monitorEnabled = enabled);
-    _syncMonitorTimer();
-  }
-
-  void _syncMonitorTimer() {
-    _monitorTimer?.cancel();
-    _monitorTimer = null;
-    if (!_monitorEnabled || widget.fetchSystemStats == null) return;
-    unawaited(_pollMonitor());
-    _monitorTimer = Timer.periodic(
-      const Duration(seconds: 2),
-      (_) => unawaited(_pollMonitor()),
-    );
-  }
-
-  Future<void> _pollMonitor() async {
-    final fetch = widget.fetchSystemStats;
-    if (!_monitorEnabled || fetch == null || _polling) return;
-    _polling = true;
-    try {
-      final next = await fetch();
-      if (!mounted || !_monitorEnabled) return;
-      setState(() {
-        _prevStats = _stats;
-        _stats = next;
-        _monitorError = null;
-        _monitorLoading = false;
-      });
-    } catch (error) {
-      if (!mounted || !_monitorEnabled) return;
-      setState(() {
-        _monitorError = '$error';
-        _monitorLoading = false;
-      });
-    } finally {
-      _polling = false;
-    }
   }
 
   Future<void> _toggleMonitor() async {
     final next = !_monitorEnabled;
-    setState(() {
-      _monitorEnabled = next;
-      if (!next) {
-        _stats = null;
-        _prevStats = null;
-        _monitorError = null;
-      } else {
-        _monitorLoading = true;
-      }
-    });
+    setState(() => _monitorEnabled = next);
     await _storage.saveSystemMonitorEnabled(next);
-    _syncMonitorTimer();
   }
 
   void _focusTerminal() {
@@ -213,7 +180,6 @@ class _SshTerminalPaneState extends State<SshTerminalPane> {
 
   @override
   void dispose() {
-    _monitorTimer?.cancel();
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -320,17 +286,6 @@ class _SshTerminalPaneState extends State<SshTerminalPane> {
 
   @override
   Widget build(BuildContext context) {
-    final style = TerminalStyle(
-      fontSize: _fontSize,
-      fontFamily: 'Cascadia Mono',
-      fontFamilyFallback: const [
-        'Cascadia Code',
-        'JetBrains Mono',
-        'Noto Sans Mono',
-        'Segoe UI Emoji',
-        'monospace'
-      ],
-    );
     final canMonitor = widget.fetchSystemStats != null;
     return Column(
       children: [
@@ -356,27 +311,26 @@ class _SshTerminalPaneState extends State<SshTerminalPane> {
                 _zoom(event.scrollDelta.dy < 0 ? 1 : -1);
               }
             },
-            child: TerminalView(
-              widget.terminal,
-              key: ValueKey(_themeMode),
-              controller: _controller,
-              focusNode: _focusNode,
-              theme: _theme,
-              textStyle: style,
-              padding: const EdgeInsets.all(10),
-              autofocus: true,
-              hardwareKeyboardOnly: true,
-              simulateScroll: true,
-              onSecondaryTapUp: (details, _) => _showContextMenu(details),
+            child: RepaintBoundary(
+              child: TerminalView(
+                widget.terminal,
+                key: ValueKey(_themeMode),
+                controller: _controller,
+                focusNode: _focusNode,
+                theme: _theme,
+                textStyle: _style,
+                padding: const EdgeInsets.all(10),
+                autofocus: true,
+                hardwareKeyboardOnly: true,
+                simulateScroll: true,
+                onSecondaryTapUp: (details, _) => _showContextMenu(details),
+              ),
             ),
           ),
         ),
         if (canMonitor && _monitorEnabled)
-          _SystemMonitorBar(
-            stats: _stats,
-            previous: _prevStats,
-            loading: _monitorLoading && _stats == null,
-            error: _monitorError,
+          _SystemMonitorHost(
+            fetch: widget.fetchSystemStats!,
             onHide: _toggleMonitor,
           ),
       ],
@@ -513,6 +467,89 @@ class _Tool extends StatelessWidget {
   }
 }
 
+class _SystemMonitorHost extends StatefulWidget {
+  const _SystemMonitorHost({
+    required this.fetch,
+    required this.onHide,
+  });
+
+  final Future<RemoteSystemStats> Function() fetch;
+  final VoidCallback onHide;
+
+  @override
+  State<_SystemMonitorHost> createState() => _SystemMonitorHostState();
+}
+
+class _SystemMonitorHostState extends State<_SystemMonitorHost> {
+  RemoteSystemStats? _stats;
+  RemoteSystemStats? _prevStats;
+  String? _error;
+  var _loading = true;
+  var _polling = false;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _start();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SystemMonitorHost oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Ignore fetch identity changes from parent rebuilds — same service.
+  }
+
+  void _start() {
+    _timer?.cancel();
+    unawaited(_poll());
+    _timer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => unawaited(_poll()),
+    );
+  }
+
+  Future<void> _poll() async {
+    if (_polling) return;
+    _polling = true;
+    try {
+      final next = await widget.fetch();
+      if (!mounted) return;
+      setState(() {
+        _prevStats = _stats;
+        _stats = next;
+        _error = null;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = '$error';
+        _loading = false;
+      });
+    } finally {
+      _polling = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SystemMonitorBar(
+      stats: _stats,
+      previous: _prevStats,
+      loading: _loading && _stats == null,
+      error: _error,
+      onHide: widget.onHide,
+    );
+  }
+}
+
 class _SystemMonitorBar extends StatelessWidget {
   const _SystemMonitorBar({
     required this.stats,
@@ -537,12 +574,13 @@ class _SystemMonitorBar extends StatelessWidget {
     return Material(
       color: const Color(0xFF1A1D24),
       child: Container(
-        height: 30,
+        constraints: const BoxConstraints(minHeight: 44),
         decoration: const BoxDecoration(
           border: Border(top: BorderSide(color: Color(0xFF2E333C))),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+        padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             const Icon(Icons.monitor_heart_outlined,
                 size: 14, color: Color(0xFF3D9970)),
@@ -567,29 +605,28 @@ class _SystemMonitorBar extends StatelessWidget {
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      _MetricChip(
-                        label: 'CPU',
-                        value: cpu == null ? '…' : '${cpu.round()}%',
-                        fraction: cpu == null ? null : cpu / 100,
+                      _CpuMetric(
+                        percent: cpu,
                         color: const Color(0xFF5B9BD5),
                       ),
-                      const SizedBox(width: 14),
-                      _MetricChip(
+                      const SizedBox(width: 12),
+                      _StorageMetric(
                         label: 'RAM',
-                        value: memFrac == null
-                            ? '…'
-                            : '${_fmtGiB(stats!.memUsedKb)} / ${_fmtGiB(stats!.memTotalKb)}',
+                        usedKb: stats!.memUsedKb,
+                        freeKb: stats!.memFreeKb,
+                        totalKb: stats!.memTotalKb,
                         fraction: memFrac,
                         color: const Color(0xFFE6B422),
                       ),
-                      const SizedBox(width: 14),
-                      _MetricChip(
+                      const SizedBox(width: 12),
+                      _StorageMetric(
                         label: 'DISK',
-                        value: diskFrac == null
-                            ? '…'
-                            : '${_fmtGiB(stats!.diskUsedKb)} / ${_fmtGiB(stats!.diskTotalKb)}  ${stats!.diskMount}',
+                        usedKb: stats!.diskUsedKb,
+                        freeKb: stats!.diskFreeKb,
+                        totalKb: stats!.diskTotalKb,
                         fraction: diskFrac,
                         color: const Color(0xFF3D9970),
+                        subtitle: stats!.diskMount,
                       ),
                     ],
                   ),
@@ -616,68 +653,186 @@ class _SystemMonitorBar extends StatelessWidget {
       ),
     );
   }
-
-  static String _fmtGiB(int kb) {
-    final gib = kb / (1024 * 1024);
-    if (gib >= 10) return '${gib.round()}G';
-    if (gib >= 1) return '${gib.toStringAsFixed(1)}G';
-    final mib = kb / 1024;
-    if (mib >= 10) return '${mib.round()}M';
-    return '${mib.toStringAsFixed(1)}M';
-  }
 }
 
-class _MetricChip extends StatelessWidget {
-  const _MetricChip({
-    required this.label,
-    required this.value,
-    required this.fraction,
-    required this.color,
-  });
+String _fmtSize(int kb) {
+  final gib = kb / (1024 * 1024);
+  if (gib >= 100) return '${gib.round()} GB';
+  if (gib >= 10) return '${gib.toStringAsFixed(1)} GB';
+  if (gib >= 1) return '${gib.toStringAsFixed(2)} GB';
+  final mib = kb / 1024;
+  if (mib >= 100) return '${mib.round()} MB';
+  if (mib >= 10) return '${mib.toStringAsFixed(0)} MB';
+  if (mib >= 1) return '${mib.toStringAsFixed(1)} MB';
+  return '$kb KB';
+}
 
-  final String label;
-  final String value;
-  final double? fraction;
+class _CpuMetric extends StatelessWidget {
+  const _CpuMetric({required this.percent, required this.color});
+
+  final double? percent;
   final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.6,
-            color: color,
-          ),
-        ),
-        const SizedBox(width: 6),
-        SizedBox(
-          width: 52,
-          height: 6,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: LinearProgressIndicator(
-              value: fraction,
-              backgroundColor: const Color(0xFF2A2F38),
-              color: color,
-              minHeight: 6,
+    final pct = percent;
+    return _MetricCard(
+      label: 'CPU',
+      color: color,
+      fraction: pct == null ? null : pct / 100,
+      primary: pct == null ? '…' : '${pct.round()}%',
+      secondary: const Text(
+        'usage',
+        style: TextStyle(fontSize: 10, color: Colors.white38),
+      ),
+    );
+  }
+}
+
+class _StorageMetric extends StatelessWidget {
+  const _StorageMetric({
+    required this.label,
+    required this.usedKb,
+    required this.freeKb,
+    required this.totalKb,
+    required this.fraction,
+    required this.color,
+    this.subtitle,
+  });
+
+  final String label;
+  final int usedKb;
+  final int freeKb;
+  final int totalKb;
+  final double? fraction;
+  final Color color;
+  final String? subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = fraction == null ? null : (fraction! * 100).round();
+    return _MetricCard(
+      label: label,
+      color: color,
+      fraction: fraction,
+      primary: pct == null ? '…' : '$pct% full',
+      secondary: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'used ${_fmtSize(usedKb)}',
+            style: const TextStyle(
+              fontSize: 10,
+              color: Colors.white70,
+              fontFeatures: [FontFeature.tabularFigures()],
             ),
           ),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 11,
-            color: Colors.white70,
-            fontFeatures: [FontFeature.tabularFigures()],
+          const Text('  ·  ', style: TextStyle(fontSize: 10, color: Colors.white24)),
+          Text(
+            'free ${_fmtSize(freeKb)}',
+            style: TextStyle(
+              fontSize: 10,
+              color: color.withValues(alpha: 0.95),
+              fontWeight: FontWeight.w600,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
           ),
-        ),
-      ],
+          Text(
+            '  /  ${_fmtSize(totalKb)}',
+            style: const TextStyle(
+              fontSize: 10,
+              color: Colors.white38,
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
+          ),
+          if (subtitle != null && subtitle!.isNotEmpty) ...[
+            const SizedBox(width: 6),
+            Text(
+              subtitle!,
+              style: const TextStyle(fontSize: 10, color: Colors.white24),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _MetricCard extends StatelessWidget {
+  const _MetricCard({
+    required this.label,
+    required this.color,
+    required this.fraction,
+    required this.primary,
+    required this.secondary,
+  });
+
+  final String label;
+  final Color color;
+  final double? fraction;
+  final String primary;
+  final Widget secondary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF22262E),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.7,
+                      color: color,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 56,
+                    height: 5,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: LinearProgressIndicator(
+                        value: fraction,
+                        backgroundColor: const Color(0xFF2A2F38),
+                        color: color,
+                        minHeight: 5,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    primary,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 3),
+              secondary,
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

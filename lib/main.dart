@@ -14,9 +14,12 @@ import 'models/remote_system_stats.dart';
 import 'models/saved_session.dart';
 import 'models/upload_job.dart';
 import 'services/app_log.dart';
+import 'services/app_lock.dart';
+import 'services/app_version.dart';
 import 'services/rdp_session_service.dart';
 import 'services/session_storage.dart';
 import 'services/ssh_session_service.dart';
+import 'widgets/app_lock_gate.dart';
 import 'widgets/morixtrem_logo.dart';
 import 'widgets/ssh_terminal_pane.dart';
 import 'widgets/welcome_pane.dart';
@@ -142,8 +145,9 @@ void showAppToast(
     );
 }
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await AppVersion.ensureLoaded();
   FlutterError.onError = (details) {
     AppLog.line('FLUTTER ERROR: ${details.exceptionAsString()}');
     AppLog.line('${details.stack}');
@@ -200,7 +204,71 @@ class MorixtermApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const WorkspacePage(),
+      home: const _AppRoot(),
+    );
+  }
+}
+
+class _AppRoot extends StatefulWidget {
+  const _AppRoot();
+
+  @override
+  State<_AppRoot> createState() => _AppRootState();
+}
+
+class _AppRootState extends State<_AppRoot> {
+  final AppLock _appLock = AppLock();
+  bool? _lockEnabled;
+  var _unlocked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    final enabled = await _appLock.isEnabled();
+    if (!mounted) return;
+    setState(() {
+      _lockEnabled = enabled;
+      _unlocked = !enabled;
+    });
+  }
+
+  Future<void> _refreshLockState({bool unlockIfDisabled = true}) async {
+    final enabled = await _appLock.isEnabled();
+    if (!mounted) return;
+    setState(() {
+      _lockEnabled = enabled;
+      if (!enabled && unlockIfDisabled) _unlocked = true;
+    });
+  }
+
+  void _unlock() => setState(() => _unlocked = true);
+
+  void _lockNow() {
+    if (_lockEnabled != true) return;
+    setState(() => _unlocked = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = _lockEnabled;
+    if (enabled == null) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF1A1D24),
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (enabled && !_unlocked) {
+      return AppUnlockScreen(appLock: _appLock, onUnlocked: _unlock);
+    }
+    return WorkspacePage(
+      appLock: _appLock,
+      lockEnabled: enabled,
+      onLockNow: enabled ? _lockNow : null,
+      onLockSettingsChanged: _refreshLockState,
     );
   }
 }
@@ -208,7 +276,18 @@ class MorixtermApp extends StatelessWidget {
 enum _Pane { home, session, files }
 
 class WorkspacePage extends StatefulWidget {
-  const WorkspacePage({super.key});
+  const WorkspacePage({
+    super.key,
+    required this.appLock,
+    required this.lockEnabled,
+    this.onLockNow,
+    this.onLockSettingsChanged,
+  });
+
+  final AppLock appLock;
+  final bool lockEnabled;
+  final VoidCallback? onLockNow;
+  final Future<void> Function()? onLockSettingsChanged;
 
   @override
   State<WorkspacePage> createState() => _WorkspacePageState();
@@ -223,19 +302,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
   final SessionStorage sessionStorage = SessionStorage();
   Set<String> folders = <String>{};
   final Set<String> collapsedFolders = <String>{};
-  List<SavedSession> sessions = const [
-    SavedSession(
-        name: 'Windows Server',
-        host: '192.168.1.10',
-        port: 3389,
-        username: 'مدیر'),
-    SavedSession(
-        name: 'Linux SSH',
-        host: '192.168.1.20',
-        port: 22,
-        username: 'root',
-        protocol: SessionProtocol.ssh),
-  ];
+  List<SavedSession> sessions = const [];
 
   LiveSession? get focused {
     for (final item in openSessions) {
@@ -492,13 +559,18 @@ class _WorkspacePageState extends State<WorkspacePage> {
       }
     });
     live.cwdSubscription?.cancel();
+    Timer? cwdDebounce;
     live.cwdSubscription = live.ssh?.cwdChanges.listen((path) {
       if (!mounted || !live.followTerminalCwd) return;
       if (path == live.explorerPath) return;
       live.explorerPath = path;
       live.selectedPaths.clear();
-      setState(() {});
-      unawaited(_refreshFiles(live));
+      cwdDebounce?.cancel();
+      cwdDebounce = Timer(const Duration(milliseconds: 350), () {
+        if (!mounted || !live.followTerminalCwd) return;
+        setState(() {});
+        unawaited(_refreshFiles(live));
+      });
     });
   }
 
@@ -1103,16 +1175,24 @@ class _WorkspacePageState extends State<WorkspacePage> {
     }
   }
 
-  Future<void> _openNewSession() async {
+  Future<void> _openNewSession({String? folder}) async {
     final result = await showDialog<
         ({SavedSession session, String password, bool savePassword})>(
       context: context,
-      builder: (context) => const _NewSessionDialog(),
+      builder: (context) => _NewSessionDialog(
+        folders: (folders.toList()..sort()),
+        initialFolder: folder,
+      ),
     );
     if (result == null || !mounted) return;
     final stored = result.savePassword
         ? result.session.copyWith(password: result.password)
         : result.session;
+    if (stored.folder != null) {
+      final nextFolders = {...folders, stored.folder!};
+      setState(() => folders = nextFolders);
+      await sessionStorage.saveFolders(nextFolders);
+    }
     sessionStorage.saveAll([...sessions, stored]);
     setState(() => sessions = [...sessions, stored]);
     await _connectSession(stored, password: result.password);
@@ -1122,13 +1202,20 @@ class _WorkspacePageState extends State<WorkspacePage> {
     final result = await showDialog<
         ({SavedSession session, String password, bool savePassword})>(
       context: context,
-      builder: (context) => _NewSessionDialog(initial: original),
+      builder: (context) => _NewSessionDialog(
+        initial: original,
+        folders: (folders.toList()..sort()),
+      ),
     );
     if (result == null || !mounted) return;
-    final updated = (result.savePassword
-            ? result.session.copyWith(password: result.password)
-            : result.session.copyWith(password: null))
-        .copyWith(folder: original.folder);
+    final updated = result.savePassword
+        ? result.session.copyWith(password: result.password)
+        : result.session.copyWith(password: null);
+    if (updated.folder != null) {
+      final nextFolders = {...folders, updated.folder!};
+      setState(() => folders = nextFolders);
+      await sessionStorage.saveFolders(nextFolders);
+    }
     await _replaceSession(original, updated);
     showMessage('Session settings saved', kind: ToastKind.success);
   }
@@ -1146,6 +1233,16 @@ class _WorkspacePageState extends State<WorkspacePage> {
     await showDialog<void>(
       context: context,
       builder: (context) => const _AboutDialog(),
+    );
+  }
+
+  Future<void> _showSecurity() async {
+    final result = await showAppSecurityDialog(context, appLock: widget.appLock);
+    await widget.onLockSettingsChanged?.call();
+    if (!mounted || result == null) return;
+    showMessage(
+      result ? 'App password updated' : 'App password turned off',
+      kind: ToastKind.success,
     );
   }
 
@@ -1168,6 +1265,9 @@ class _WorkspacePageState extends State<WorkspacePage> {
             onSession: _openNewSession,
             onFiles: _openFilesPane,
             onAbout: _showAbout,
+            onSecurity: _showSecurity,
+            onLock: widget.onLockNow,
+            lockEnabled: widget.lockEnabled,
             onDisconnect: hasLiveSession ? _disconnect : null,
             connected: hasLiveSession,
           ),
@@ -1189,6 +1289,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
                   onRenameFolder: _renameFolder,
                   onDeleteFolder: _deleteFolder,
                   onMoveSession: _moveSessionToFolder,
+                  onNewSessionInFolder: (folder) =>
+                      _openNewSession(folder: folder),
                   collapsedFolders: collapsedFolders,
                   onToggleFolder: _toggleFolder,
                 ),
@@ -1252,7 +1354,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
                                       filesOpen: showSidebar,
                                       fetchSystemStats:
                                           item.isSsh && item.connected
-                                              ? () => item.ssh!.fetchSystemStats()
+                                              ? item.ssh!.fetchSystemStats
                                               : null,
                                     ),
                                   ),
@@ -1296,17 +1398,24 @@ class _WorkspacePageState extends State<WorkspacePage> {
 }
 
 class _ToolBar extends StatelessWidget {
-  const _ToolBar(
-      {required this.onSession,
-      required this.onFiles,
-      required this.onAbout,
-      required this.connected,
-      this.onDisconnect});
+  const _ToolBar({
+    required this.onSession,
+    required this.onFiles,
+    required this.onAbout,
+    required this.onSecurity,
+    required this.connected,
+    required this.lockEnabled,
+    this.onDisconnect,
+    this.onLock,
+  });
   final VoidCallback onSession;
   final VoidCallback onFiles;
   final VoidCallback onAbout;
+  final VoidCallback onSecurity;
   final VoidCallback? onDisconnect;
+  final VoidCallback? onLock;
   final bool connected;
+  final bool lockEnabled;
 
   @override
   Widget build(BuildContext context) {
@@ -1332,6 +1441,19 @@ class _ToolBar extends StatelessWidget {
           color: connected ? Colors.redAccent : Colors.white38,
           onTap: onDisconnect,
         ),
+        _ToolBtn(
+          icon: lockEnabled ? Icons.lock : Icons.lock_open_outlined,
+          label: 'Password',
+          color: lockEnabled ? const Color(0xFFE6B422) : Colors.white70,
+          onTap: onSecurity,
+        ),
+        if (onLock != null)
+          _ToolBtn(
+            icon: Icons.lock_outline,
+            label: 'Lock',
+            color: Colors.orangeAccent,
+            onTap: onLock,
+          ),
         _ToolBtn(
             icon: Icons.info_outline,
             label: 'About',
@@ -1381,6 +1503,7 @@ class _SessionSidebar extends StatelessWidget {
     required this.onRenameFolder,
     required this.onDeleteFolder,
     required this.onMoveSession,
+    required this.onNewSessionInFolder,
     required this.collapsedFolders,
     required this.onToggleFolder,
   });
@@ -1395,6 +1518,7 @@ class _SessionSidebar extends StatelessWidget {
   final ValueChanged<String> onRenameFolder;
   final ValueChanged<String> onDeleteFolder;
   final void Function(SavedSession session, String? folder) onMoveSession;
+  final ValueChanged<String?> onNewSessionInFolder;
   final Set<String> collapsedFolders;
   final ValueChanged<String> onToggleFolder;
 
@@ -1477,6 +1601,16 @@ class _SessionSidebar extends StatelessWidget {
                   child: Text(folder ?? 'No folder',
                       style: const TextStyle(
                           fontSize: 11, color: Colors.white60))),
+              IconButton(
+                tooltip: folder == null
+                    ? 'New session'
+                    : 'New session in this folder',
+                onPressed: () => onNewSessionInFolder(folder),
+                padding: EdgeInsets.zero,
+                constraints:
+                    const BoxConstraints.tightFor(width: 24, height: 22),
+                icon: const Icon(Icons.add, size: 16, color: Colors.white54),
+              ),
               if (folder != null) ...[
                 IconButton(
                   tooltip: 'Rename folder',
@@ -1565,16 +1699,22 @@ class _SessionSidebar extends StatelessWidget {
 
   Future<void> _showSessionMenu(BuildContext context, TapUpDetails details,
       SavedSession session, int index) async {
+    final sortedFolders = folders.toList()..sort();
     final action = await _showAppMenu(
       context,
       details.globalPosition,
-      const [
-        _CtxItem(
+      [
+        const _CtxItem(
           value: 'edit',
           label: 'Edit session',
           icon: Icons.edit_outlined,
         ),
-        _CtxItem(
+        const _CtxItem(
+          value: 'move',
+          label: 'Move to folder…',
+          icon: Icons.drive_file_move_outline,
+        ),
+        const _CtxItem(
           value: 'delete',
           label: 'Delete session',
           icon: Icons.delete_outline,
@@ -1586,6 +1726,18 @@ class _SessionSidebar extends StatelessWidget {
     if (!context.mounted) return;
     if (action == 'edit') {
       onEdit(session);
+      return;
+    }
+    if (action == 'move') {
+      final target = await showDialog<_FolderPick>(
+        context: context,
+        builder: (context) => _PickFolderDialog(
+          folders: sortedFolders,
+          current: session.folder,
+        ),
+      );
+      if (!context.mounted || target == null) return;
+      onMoveSession(session, target.folder);
       return;
     }
     if (action != 'delete') return;
@@ -1607,6 +1759,73 @@ class _SessionSidebar extends StatelessWidget {
       ),
     );
     if (confirmed == true) onDelete(index);
+  }
+}
+
+class _FolderPick {
+  const _FolderPick(this.folder);
+  final String? folder;
+}
+
+class _PickFolderDialog extends StatelessWidget {
+  const _PickFolderDialog({
+    required this.folders,
+    required this.current,
+  });
+
+  final List<String> folders;
+  final String? current;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Move to folder'),
+      content: SizedBox(
+        width: 320,
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            ListTile(
+              leading: Icon(
+                Icons.inbox_outlined,
+                color: current == null ? Moba.green : Colors.white54,
+              ),
+              title: const Text('No folder'),
+              trailing: current == null
+                  ? const Icon(Icons.check, color: Moba.green, size: 18)
+                  : null,
+              onTap: () => Navigator.pop(context, const _FolderPick(null)),
+            ),
+            if (folders.isEmpty)
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+                child: Text(
+                  'No folders yet. Create one from the sidebar (+ folder icon).',
+                  style: TextStyle(fontSize: 12, color: Colors.white54, height: 1.35),
+                ),
+              ),
+            for (final folder in folders)
+              ListTile(
+                leading: Icon(
+                  Icons.folder_outlined,
+                  color: current == folder ? Moba.green : Colors.white54,
+                ),
+                title: Text(folder),
+                trailing: current == folder
+                    ? const Icon(Icons.check, color: Moba.green, size: 18)
+                    : null,
+                onTap: () => Navigator.pop(context, _FolderPick(folder)),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
   }
 }
 
@@ -1849,7 +2068,7 @@ class _AboutDialog extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(20)),
-                    child: const Text('v0.1.0', style: TextStyle(color: Colors.white, fontSize: 12)),
+                    child: Text(AppVersion.label, style: const TextStyle(color: Colors.white, fontSize: 12)),
                   ),
                 ],
               ),
@@ -3203,9 +3422,15 @@ class _CredentialsDialogState extends State<_CredentialsDialog> {
 }
 
 class _NewSessionDialog extends StatefulWidget {
-  const _NewSessionDialog({this.initial});
+  const _NewSessionDialog({
+    this.initial,
+    this.folders = const [],
+    this.initialFolder,
+  });
 
   final SavedSession? initial;
+  final List<String> folders;
+  final String? initialFolder;
 
   @override
   State<_NewSessionDialog> createState() => _NewSessionDialogState();
@@ -3221,6 +3446,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
   bool showPassword = false;
   late bool savePassword;
   int? tabColor;
+  String? folder;
 
   @override
   void initState() {
@@ -3235,6 +3461,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
     password.text = initial?.password ?? '';
     savePassword = initial?.hasSavedPassword ?? true;
     tabColor = initial?.tabColor;
+    folder = initial?.folder ?? widget.initialFolder;
   }
 
   @override
@@ -3254,6 +3481,12 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
         port.text = next == SessionProtocol.ssh ? '22' : '3389';
       }
     });
+  }
+
+  List<String> get _folderOptions {
+    final items = {...widget.folders};
+    if (folder != null && folder!.trim().isNotEmpty) items.add(folder!);
+    return items.toList()..sort();
   }
 
   void _submit() {
@@ -3279,6 +3512,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
         username: user.text.trim(),
         protocol: protocol,
         tabColor: tabColor,
+        folder: folder,
       ),
       password: password.text,
       savePassword: savePassword,
@@ -3315,6 +3549,37 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
           TextField(
               controller: name,
               decoration: const InputDecoration(labelText: 'Session name')),
+          const SizedBox(height: 14),
+          DropdownButtonFormField<String>(
+            initialValue: folder ?? '',
+            decoration: const InputDecoration(
+              labelText: 'Folder',
+              prefixIcon: Icon(Icons.folder_outlined, size: 20),
+            ),
+            items: [
+              const DropdownMenuItem<String>(
+                value: '',
+                child: Text('No folder'),
+              ),
+              for (final item in _folderOptions)
+                DropdownMenuItem<String>(
+                  value: item,
+                  child: Text(item),
+                ),
+            ],
+            onChanged: (value) => setState(
+                () => folder = (value == null || value.isEmpty) ? null : value),
+          ),
+          if (widget.folders.isEmpty) ...[
+            const SizedBox(height: 6),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Create a folder from the sidebar to organize sessions.',
+                style: TextStyle(fontSize: 11, color: Colors.white38),
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
           TextField(
               controller: user,
@@ -3509,9 +3774,70 @@ class _SessionSurface extends StatelessWidget {
             ] else if (snapshot.phase == ConnectionPhase.failed) ...[
               const Icon(Icons.error_outline,
                   size: 64, color: Colors.redAccent),
-              const SizedBox(height: 12),
-              Text(snapshot.error ?? 'Connection failed',
-                  textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 520),
+                child: Material(
+                  color: const Color(0xFF2A2A2A),
+                  borderRadius: BorderRadius.circular(10),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 10, 8, 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.report_gmailerrorred_outlined,
+                                size: 16, color: Color(0xFFFF8A80)),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text(
+                                'Connection error',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white70,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Copy error',
+                              onPressed: () async {
+                                final text =
+                                    snapshot.error ?? 'Connection failed';
+                                await Clipboard.setData(
+                                    ClipboardData(text: text));
+                                if (!context.mounted) return;
+                                showAppToast(
+                                  context,
+                                  'Error copied to clipboard',
+                                  kind: ToastKind.success,
+                                );
+                              },
+                              icon: const Icon(Icons.copy_rounded, size: 16),
+                              color: Colors.white70,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints.tightFor(
+                                  width: 32, height: 32),
+                              splashRadius: 16,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        SelectableText(
+                          snapshot.error ?? 'Connection failed',
+                          textAlign: TextAlign.left,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            height: 1.4,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
               const SizedBox(height: 16),
               if (onRetry != null)
                 FilledButton.icon(
@@ -3530,7 +3856,7 @@ class _SessionSurface extends StatelessWidget {
               if (snapshot.protocol == SessionProtocol.rdp)
                 const Padding(
                   padding: EdgeInsets.only(top: 8),
-                  child: Text('Remote desktop opened in FreeRDP',
+                  child: Text('Remote desktop opened in its own window',
                       style: TextStyle(color: Colors.white70)),
                 ),
             ],
