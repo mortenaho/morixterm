@@ -46,13 +46,13 @@ class RdpSessionService {
   Future<void> connect(RdpConnectionRequest request) async {
     final endpoint = parseEndpoint(request.host, request.port);
     if (endpoint.host.isEmpty) {
-      throw RdpException('آدرس سرور را وارد کنید');
+      throw RdpException('Enter a server address');
     }
     if (request.username.trim().isEmpty) {
-      throw RdpException('نام کاربری را وارد کنید');
+      throw RdpException('Enter a username');
     }
     if (request.password.isEmpty) {
-      throw RdpException('رمز عبور را وارد کنید');
+      throw RdpException('Enter a password');
     }
 
     await disconnect();
@@ -70,7 +70,7 @@ class RdpSessionService {
     final client = await locateClient();
     await AppLog.line('FreeRDP binary: ${client ?? 'NOT FOUND'}');
     if (client == null) {
-      _fail('کلاینت FreeRDP پیدا نشد. بستهٔ freerdp-x11 را نصب کنید.\nلاگ: ${AppLog.lastPath}');
+      _fail('FreeRDP client not found. Install freerdp-x11.\nLog: ${AppLog.lastPath}');
       throw RdpException(_snapshot.error!);
     }
 
@@ -80,7 +80,7 @@ class RdpSessionService {
       await AppLog.line('RDP connect exception: $error');
       await AppLog.line('$stack');
       if (_snapshot.phase != ConnectionPhase.failed) {
-        _fail('شروع اتصال ناموفق بود: $error\nلاگ: ${AppLog.lastPath}');
+        _fail('Failed to start connection: $error\nLog: ${AppLog.lastPath}');
       }
       rethrow;
     }
@@ -127,22 +127,22 @@ class RdpSessionService {
   Future<File> shareLocalFile(String localPath, {String? destDir}) async {
     if (_snapshot.phase != ConnectionPhase.connected) {
       await AppLog.line('RDP share denied phase=${_snapshot.phase}');
-      throw RdpException('ابتدا به یک جلسه RDP متصل شوید');
+      throw RdpException('Connect to an RDP session first');
     }
     final dir = destDir == null ? await ensureShareDir() : Directory(destDir);
     await dir.create(recursive: true);
     final name = localPath.split(Platform.pathSeparator).last;
-    if (name.isEmpty) throw RdpException('نام فایل نامعتبر است');
+    if (name.isEmpty) throw RdpException('Invalid file name');
     return File(localPath).copy('${dir.path}/$name');
   }
 
   Future<List<RemoteEntry>> listSharedEntries(String path) async {
     final root = await ensureShareDir();
     if (!_insideShare(path, root.path)) {
-      throw RdpException('مسیر خارج از درایو اشتراکی است');
+      throw RdpException('Path is outside the shared drive');
     }
     final dir = Directory(path);
-    if (!dir.existsSync()) throw RdpException('پوشه پیدا نشد');
+    if (!dir.existsSync()) throw RdpException('Folder not found');
     final entries = <RemoteEntry>[];
     await for (final item in dir.list()) {
       final name = item.path.split(Platform.pathSeparator).last;
@@ -163,14 +163,14 @@ class RdpSessionService {
   Future<void> copyShared(List<String> sources, String destDir) async {
     final result = await Process.run('cp', ['-a', ...sources, destDir]);
     if (result.exitCode != 0) {
-      throw RdpException((result.stderr as String).trim().isEmpty ? 'کپی فایل ناموفق بود' : (result.stderr as String).trim());
+      throw RdpException((result.stderr as String).trim().isEmpty ? 'Copy failed' : (result.stderr as String).trim());
     }
   }
 
   Future<void> moveShared(List<String> sources, String destDir) async {
     final result = await Process.run('mv', [...sources, destDir]);
     if (result.exitCode != 0) {
-      throw RdpException((result.stderr as String).trim().isEmpty ? 'انتقال فایل ناموفق بود' : (result.stderr as String).trim());
+      throw RdpException((result.stderr as String).trim().isEmpty ? 'Move failed' : (result.stderr as String).trim());
     }
   }
 
@@ -193,7 +193,7 @@ class RdpSessionService {
   Future<void> renameShared(String path, String newName) async {
     final root = await ensureShareDir();
     if (!_insideShare(path, root.path)) {
-      throw RdpException('مسیر خارج از درایو اشتراکی است');
+      throw RdpException('Path is outside the shared drive');
     }
     if (newName.isEmpty || newName.contains('/') || newName.contains('\\') || newName == '.' || newName == '..') {
       throw RdpException('Invalid new name');
@@ -318,7 +318,7 @@ class RdpSessionService {
       AppLog.line('RDP $stream: $chunk');
       final error = _extractError(log.toString());
       if (error != null && _snapshot.phase == ConnectionPhase.connecting) {
-        _fail('$error\nلاگ: ${AppLog.lastPath}');
+        _fail('$error\nLog: ${AppLog.lastPath}');
       }
     }
 
@@ -330,7 +330,7 @@ class RdpSessionService {
       deleteArgs();
       if (_stopping) return;
       if (_snapshot.phase == ConnectionPhase.connecting) {
-        _fail('${_extractError(log.toString()) ?? 'اتصال برقرار نشد (کد $code).'}\nلاگ: ${AppLog.lastPath}');
+        _fail('${_extractError(log.toString()) ?? 'Connection failed (exit $code).'}\nLog: ${AppLog.lastPath}');
       } else if (_snapshot.phase == ConnectionPhase.connected) {
         _emit(const ConnectionSnapshot(phase: ConnectionPhase.idle));
       }
@@ -344,7 +344,7 @@ class RdpSessionService {
 
     if (outcome.startsWith('exit:')) {
       final code = int.tryParse(outcome.split(':').last) ?? 1;
-      final error = '${_extractError(log.toString()) ?? 'اتصال برقرار نشد (کد $code).'}\nلاگ: ${AppLog.lastPath}';
+      final error = '${_extractError(log.toString()) ?? 'Connection failed (exit $code).'}\nLog: ${AppLog.lastPath}';
       _fail(error);
       throw RdpException(error);
     }
@@ -392,18 +392,18 @@ class RdpSessionService {
         lower.contains('access denied') ||
         lower.contains('connect_cancelled') ||
         lower.contains('nla begin failed')) {
-      return 'ورود ناموفق بود. نام کاربری یا رمز عبور را بررسی کنید.';
+      return 'Authentication failed. Check username or password.';
     }
     if (lower.contains('refused')) {
-      return 'سرور اتصال را رد کرد. آدرس و پورت RDP را بررسی کنید.';
+      return 'Connection refused. Check RDP host and port.';
     }
     if (lower.contains('timed out')) {
-      return 'زمان اتصال تمام شد. در دسترس بودن سرور را بررسی کنید.';
+      return 'Connection timed out. Check that the server is reachable.';
     }
     if (lower.contains('name or service not known')) {
-      return 'آدرس سرور پیدا نشد.';
+      return 'Host could not be resolved.';
     }
-    return 'اتصال RDP برقرار نشد.';
+    return 'RDP connection failed.';
   }
 
   static Future<String?> _which(String name) async {

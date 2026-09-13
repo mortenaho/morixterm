@@ -7,6 +7,7 @@ import '../models/saved_session.dart';
 class SessionStorage {
   static const _key = 'saved_rdp_sessions';
   static const _foldersKey = 'saved_rdp_session_folders';
+  static const _monitorKey = 'terminal_system_monitor';
 
   Future<List<SavedSession>> load() async {
     final preferences = await SharedPreferences.getInstance();
@@ -28,5 +29,15 @@ class SessionStorage {
     final preferences = await SharedPreferences.getInstance();
     final values = folders.map((item) => item.trim()).where((item) => item.isNotEmpty).toSet().toList()..sort();
     await preferences.setStringList(_foldersKey, values);
+  }
+
+  Future<bool> loadSystemMonitorEnabled() async {
+    final preferences = await SharedPreferences.getInstance();
+    return preferences.getBool(_monitorKey) ?? true;
+  }
+
+  Future<void> saveSystemMonitorEnabled(bool enabled) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(_monitorKey, enabled);
   }
 }

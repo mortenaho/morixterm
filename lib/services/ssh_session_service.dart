@@ -8,7 +8,9 @@ import 'package:xterm/xterm.dart';
 
 import '../models/connection_snapshot.dart';
 import '../models/remote_entry.dart';
+import '../models/remote_system_stats.dart';
 import '../models/saved_session.dart';
+import '../models/upload_job.dart';
 import 'app_log.dart';
 import 'scp_transfer.dart';
 import 'ssh_welcome_banner.dart';
@@ -61,10 +63,10 @@ class SshSessionService {
   Future<void> connect(SshConnectionRequest request) async {
     final endpoint = parseEndpoint(request.host, request.port);
     if (endpoint.host.isEmpty) {
-      throw SshException('آدرس سرور را وارد کنید');
+      throw SshException('Enter a server address');
     }
     if (request.username.trim().isEmpty) {
-      throw SshException('نام کاربری را وارد کنید');
+      throw SshException('Enter a username');
     }
 
     await disconnect();
@@ -154,7 +156,7 @@ class SshSessionService {
     } catch (error, stack) {
       await AppLog.line('SSH ERROR: $error');
       await AppLog.line('$stack');
-      final message = '${_friendlyError(error)}\n$error\nلاگ: ${AppLog.lastPath}';
+      final message = '${_friendlyError(error)}\n$error\nLog: ${AppLog.lastPath}';
       _fail(message);
       await _closeRemote();
       throw SshException(message);
@@ -232,30 +234,77 @@ __morixtrem_cwd 2>/dev/null || true
     }
   }
 
-  Future<void> uploadFile(String localPath, {String remoteDir = '.'}) async {
+  Future<void> uploadFile(
+    String localPath, {
+    String remoteDir = '.',
+    UploadJob? job,
+  }) async {
     _requireClient('upload');
     final name = localPath.split(Platform.pathSeparator).last;
-    if (name.isEmpty) throw SshException('نام فایل نامعتبر است');
-    await AppLog.line('SCP upload $name -> $remoteDir');
+    if (name.isEmpty) throw SshException('Invalid file name');
+    final size = await File(localPath).length();
+    await AppLog.line('SCP upload $name (${size}B) -> $remoteDir');
+    Object? lastError;
+    void report(int sent, {bool indeterminate = false}) {
+      job?.report(sent, indeterminate: indeterminate);
+    }
+
     try {
+      job?.throwIfCancelled();
       try {
-        await _uploadWithSystemScp(localPath, remoteDir);
+        await _uploadWithSftp(localPath, remoteDir, job: job);
       } catch (error) {
-        await AppLog.line('system scp failed, isolated channel: $error');
-        await _uploadWithIsolatedClient(localPath, remoteDir);
+        if (error is UploadCancelledException ||
+            error is ScpCancelledException) {
+          rethrow;
+        }
+        lastError = error;
+        await AppLog.line('SFTP upload failed, trying system scp: $error');
+        job?.throwIfCancelled();
+        try {
+          await _uploadWithSystemScp(localPath, remoteDir, job: job);
+        } catch (error2) {
+          if (error2 is UploadCancelledException ||
+              error2 is ScpCancelledException) {
+            rethrow;
+          }
+          lastError = error2;
+          await AppLog.line('system scp failed, dartscp fallback: $error2');
+          job?.throwIfCancelled();
+          await _uploadWithIsolatedClient(localPath, remoteDir, job: job);
+        }
       }
+      report(size);
       await AppLog.line('SCP upload done $name');
+    } on UploadCancelledException {
+      await AppLog.line('SCP upload cancelled $name');
+      rethrow;
+    } on ScpCancelledException {
+      await AppLog.line('SCP upload cancelled $name');
+      throw UploadCancelledException();
     } on ScpException catch (error) {
       await AppLog.line('SCP upload failed: ${error.message}');
       throw SshException(error.message);
+    } catch (error) {
+      final message = error is SshException
+          ? error.message
+          : '${lastError ?? error}';
+      await AppLog.line('SCP upload failed: $message');
+      throw SshException(message);
+    } finally {
+      job?.clearCancel();
     }
   }
 
-  Future<void> _uploadWithIsolatedClient(String localPath, String remoteDir) async {
+  Future<SSHClient> _openTransferClient() async {
     final request = _request;
-    if (request == null) throw SshException('ابتدا به یک جلسه SSH متصل شوید');
+    if (request == null) throw SshException('Connect to an SSH session first');
     final endpoint = parseEndpoint(request.host, request.port);
-    final socket = await SSHSocket.connect(endpoint.host, endpoint.port, timeout: const Duration(seconds: 12));
+    final socket = await SSHSocket.connect(
+      endpoint.host,
+      endpoint.port,
+      timeout: const Duration(seconds: 12),
+    );
     final identities = await _loadIdentities(request.password);
     final password = request.password;
     final client = SSHClient(
@@ -263,29 +312,128 @@ __morixtrem_cwd 2>/dev/null || true
       username: request.username.trim(),
       identities: identities.isEmpty ? null : identities,
       onPasswordRequest: password.isEmpty ? null : () => password,
-      onUserInfoRequest: password.isEmpty ? null : (info) => List<String>.filled(info.prompts.length, password),
+      onUserInfoRequest: password.isEmpty
+          ? null
+          : (info) => List<String>.filled(info.prompts.length, password),
       onVerifyHostKey: (type, fingerprint) => true,
+      keepAliveInterval: const Duration(seconds: 15),
+      handshakeTimeout: const Duration(seconds: 15),
+      authTimeout: const Duration(seconds: 15),
     );
+    await client.authenticated.timeout(const Duration(seconds: 20));
+    return client;
+  }
+
+  Future<void> _uploadWithSftp(
+    String localPath,
+    String remoteDir, {
+    UploadJob? job,
+  }) async {
+    final name = localPath.split(Platform.pathSeparator).last;
+    final remotePath = _joinRemotePath(remoteDir, name);
+    final size = await File(localPath).length();
+    final client = await _openTransferClient();
+    SftpClient? sftp;
+    SftpFileWriter? writer;
     try {
-      await client.authenticated.timeout(const Duration(seconds: 20));
-      await ScpTransfer.upload(client: client, localPath: localPath, remoteDir: remoteDir);
+      job?.bindCancel(() {
+        final active = writer;
+        if (active != null) {
+          unawaited(active.abort());
+        }
+        unawaited(client.close());
+      });
+      job?.throwIfCancelled();
+      sftp = await client.sftp();
+      final remote = await sftp.open(
+        remotePath,
+        mode: SftpFileOpenMode.create |
+            SftpFileOpenMode.truncate |
+            SftpFileOpenMode.write,
+      );
+      try {
+        job?.throwIfCancelled();
+        writer = remote.write(
+          File(localPath).openRead().map(Uint8List.fromList),
+          onProgress: (sent) {
+            job?.report(sent.clamp(0, size));
+          },
+        );
+        await writer.done;
+        if (job?.cancelling == true) {
+          throw UploadCancelledException();
+        }
+      } catch (error) {
+        if (job?.cancelling == true || error is UploadCancelledException) {
+          throw UploadCancelledException();
+        }
+        rethrow;
+      } finally {
+        await remote.close();
+      }
     } finally {
+      job?.clearCancel();
+      try {
+        await sftp?.close();
+      } catch (_) {}
       try {
         await client.close();
       } catch (_) {}
     }
   }
 
-  Future<void> _uploadWithSystemScp(String localPath, String remoteDir) async {
+  Future<void> _uploadWithIsolatedClient(
+    String localPath,
+    String remoteDir, {
+    UploadJob? job,
+  }) async {
+    final client = await _openTransferClient();
+    try {
+      job?.bindCancel(() {
+        try {
+          client.close();
+        } catch (_) {}
+      });
+      job?.throwIfCancelled();
+      await ScpTransfer.upload(
+        client: client,
+        localPath: localPath,
+        remoteDir: remoteDir,
+        onProgress: (sent, total) => job?.report(sent),
+        isCancelled: () => job?.cancelling == true,
+      );
+    } on ScpCancelledException {
+      throw UploadCancelledException();
+    } finally {
+      job?.clearCancel();
+      try {
+        await client.close();
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _uploadWithSystemScp(
+    String localPath,
+    String remoteDir, {
+    UploadJob? job,
+  }) async {
     final request = _request;
-    if (request == null) throw SshException('ابتدا به یک جلسه SSH متصل شوید');
+    if (request == null) throw SshException('Connect to an SSH session first');
     final endpoint = parseEndpoint(request.host, request.port);
-    final destDir = remoteDir.isEmpty || remoteDir == '.' ? '~/' : (remoteDir.endsWith('/') ? remoteDir : '$remoteDir/');
-    final dest = '${request.username.trim()}@${endpoint.host}:${_scpQuote(destDir)}';
+    // Do not shell-quote the remote path — OpenSSH scp sends it as an SCP
+    // protocol argument; extra quotes become part of the filename.
+    final destDir = remoteDir.isEmpty || remoteDir == '.'
+        ? '.'
+        : (remoteDir.endsWith('/')
+            ? remoteDir.substring(0, remoteDir.length - 1)
+            : remoteDir);
+    final dest = '${request.username.trim()}@${endpoint.host}:$destDir';
     final work = await Directory.systemTemp.createTemp('morixterm-scp-');
     final askpass = File('${work.path}/askpass');
-    await askpass.writeAsString('#!/bin/sh\nprintf %s "\$MORIXTERM_SSH_PASS"\n');
+    await askpass.writeAsString(
+        '#!/bin/sh\nprintf %s "\$MORIXTERM_SSH_PASS"\n');
     await Process.run('chmod', ['700', askpass.path]);
+    Process? process;
     try {
       final environment = Map<String, String>.from(Platform.environment);
       if (request.password.isNotEmpty) {
@@ -294,33 +442,78 @@ __morixtrem_cwd 2>/dev/null || true
         environment['SSH_ASKPASS_REQUIRE'] = 'force';
         environment['DISPLAY'] = environment['DISPLAY'] ?? ':0';
       }
-      final result = await Process.run(
+      final size = await File(localPath).length();
+      // Allow roughly 1 minute per 8 MiB, with a floor/ceiling.
+      final timeoutSec =
+          (60 + (size ~/ (8 * 1024 * 1024)) * 60).clamp(90, 3600);
+      job?.report(0, indeterminate: true);
+      job?.throwIfCancelled();
+      process = await Process.start(
         'scp',
         [
           '-O',
           '-q',
-          '-o', 'StrictHostKeyChecking=no',
-          '-o', 'UserKnownHostsFile=/dev/null',
-          '-o', 'PreferredAuthentications=${request.password.isEmpty ? 'publickey' : 'password,keyboard-interactive,publickey'}',
-          '-P', '${endpoint.port}',
+          '-o',
+          'StrictHostKeyChecking=no',
+          '-o',
+          'UserKnownHostsFile=/dev/null',
+          '-o',
+          'ConnectTimeout=20',
+          '-o',
+          'ServerAliveInterval=15',
+          '-o',
+          'ServerAliveCountMax=4',
+          '-o',
+          'PreferredAuthentications=${request.password.isEmpty ? 'publickey' : 'password,keyboard-interactive,publickey'}',
+          '-P',
+          '${endpoint.port}',
           '--',
           localPath,
           dest,
         ],
         environment: environment,
       );
-      if (result.exitCode != 0) {
-        final err = '${result.stderr}'.trim();
-        throw ScpException(err.isEmpty ? 'ارسال SCP ناموفق بود (کد ${result.exitCode})' : err);
+      job?.bindCancel(() {
+        try {
+          process?.kill(ProcessSignal.sigterm);
+        } catch (_) {}
+      });
+      final stderrBuf = StringBuffer();
+      final stderrSub = process.stderr
+          .transform(utf8.decoder)
+          .listen((chunk) => stderrBuf.write(chunk));
+      final exitCode = await process.exitCode.timeout(
+        Duration(seconds: timeoutSec),
+        onTimeout: () {
+          try {
+            process?.kill(ProcessSignal.sigkill);
+          } catch (_) {}
+          throw ScpException('SCP upload timed out');
+        },
+      );
+      await stderrSub.cancel();
+      if (job?.cancelling == true) {
+        throw UploadCancelledException();
       }
+      if (exitCode != 0) {
+        final err = stderrBuf.toString().trim();
+        throw ScpException(
+            err.isEmpty ? 'SCP upload failed (exit $exitCode)' : err);
+      }
+      job?.report(size, indeterminate: false);
     } finally {
+      job?.clearCancel();
       try {
         await work.delete(recursive: true);
       } catch (_) {}
     }
   }
 
-  static String _scpQuote(String path) => "'${path.replaceAll("'", r"'\''")}'";
+  static String _joinRemotePath(String dir, String name) {
+    if (dir.isEmpty || dir == '.') return name;
+    if (dir.endsWith('/')) return '$dir$name';
+    return '$dir/$name';
+  }
 
   Future<void> copyRemote(List<String> sources, String destDir) async {
     try {
@@ -370,11 +563,78 @@ __morixtrem_cwd 2>/dev/null || true
     }
   }
 
+  Future<RemoteSystemStats> fetchSystemStats() async {
+    final client = _requireClient('monitor');
+    // Lightweight remote snapshot — one round-trip, no interactive shell use.
+    const command = r'''
+awk '/^cpu /{idle=$5+$6; total=$2+$3+$4+$5+$6+$7+$8+$9+$10+$11; print "CPU",total-idle,total}' /proc/stat
+awk '/MemTotal:/{t=$2} /MemAvailable:/{a=$2} /MemFree:/{f=$2} END{avail=(a>0?a:f); print "MEM",t+0,avail+0}' /proc/meminfo
+df -Pk / 2>/dev/null | awk 'NR==2{gsub(/%/,"",$5); print "DISK",$2+0,$3+0,$5+0,$6}'
+''';
+    final result = await client.runWithResult(command);
+    final text = utf8.decode(result.stdout, allowMalformed: true);
+    return _parseSystemStats(text);
+  }
+
+  static RemoteSystemStats _parseSystemStats(String text) {
+    int? cpuUsed;
+    int? cpuTotal;
+    int? memTotal;
+    int? memAvailable;
+    int? diskTotal;
+    int? diskUsed;
+    var diskMount = '/';
+
+    for (final raw in text.split('\n')) {
+      final line = raw.trim();
+      if (line.isEmpty) continue;
+      final parts = line.split(RegExp(r'\s+'));
+      if (parts.isEmpty) continue;
+      switch (parts.first) {
+        case 'CPU':
+          if (parts.length >= 3) {
+            cpuUsed = int.tryParse(parts[1]);
+            cpuTotal = int.tryParse(parts[2]);
+          }
+        case 'MEM':
+          if (parts.length >= 3) {
+            memTotal = int.tryParse(parts[1]);
+            memAvailable = int.tryParse(parts[2]);
+          }
+        case 'DISK':
+          if (parts.length >= 4) {
+            diskTotal = int.tryParse(parts[1]);
+            diskUsed = int.tryParse(parts[2]);
+            if (parts.length >= 5) diskMount = parts[4];
+          }
+      }
+    }
+
+    if (cpuUsed == null ||
+        cpuTotal == null ||
+        memTotal == null ||
+        memAvailable == null ||
+        diskTotal == null ||
+        diskUsed == null) {
+      throw SshException('Could not read remote system stats');
+    }
+
+    return RemoteSystemStats(
+      cpuUsedTicks: cpuUsed,
+      cpuTotalTicks: cpuTotal,
+      memTotalKb: memTotal,
+      memAvailableKb: memAvailable,
+      diskTotalKb: diskTotal,
+      diskUsedKb: diskUsed,
+      diskMount: diskMount,
+    );
+  }
+
   SSHClient _requireClient(String action) {
     final client = _client;
     if (client == null || _snapshot.phase != ConnectionPhase.connected) {
       AppLog.line('SCP $action denied phase=${_snapshot.phase} client=${client != null}');
-      throw SshException('ابتدا به یک جلسه SSH متصل شوید');
+      throw SshException('Connect to an SSH session first');
     }
     return client;
   }
@@ -468,18 +728,18 @@ __morixtrem_cwd 2>/dev/null || true
   static String _friendlyError(Object error) {
     final text = error.toString().toLowerCase();
     if (text.contains('timeout') || text.contains('timed out')) {
-      return 'زمان اتصال SSH تمام شد.';
+      return 'SSH connection timed out.';
     }
     if (text.contains('auth') || text.contains('permission denied') || text.contains('password')) {
-      return 'ورود SSH ناموفق بود. رمز عبور یا کلید را بررسی کنید.';
+      return 'SSH authentication failed. Check password or key.';
     }
     if (text.contains('refused')) {
-      return 'سرور اتصال SSH را رد کرد. آدرس و پورت ۲۲ را بررسی کنید.';
+      return 'SSH connection refused. Check host and port.';
     }
     if (text.contains('failed host lookup') || text.contains('name or service')) {
-      return 'آدرس سرور SSH پیدا نشد.';
+      return 'SSH host could not be resolved.';
     }
-    return 'اتصال SSH برقرار نشد.';
+    return 'SSH connection failed.';
   }
 
   void _fail(String message) {

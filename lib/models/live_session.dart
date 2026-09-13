@@ -7,6 +7,7 @@ import '../services/ssh_session_service.dart';
 import 'connection_snapshot.dart';
 import 'remote_entry.dart';
 import 'saved_session.dart';
+import 'upload_job.dart';
 
 class LiveSession {
   LiveSession({required this.id, required this.bookmark})
@@ -24,6 +25,7 @@ class LiveSession {
   final Set<String> selectedPaths = {};
   FileClipboard? clipboard;
   bool explorerBusy = false;
+  UploadJob? upload;
   /// Right-hand files panel next to the SSH terminal.
   bool filesSidebarOpen = false;
   /// Width of the SSH files sidebar (user-resizable).
@@ -60,6 +62,8 @@ class LiveSession {
   }
 
   Future<void> disconnect() async {
+    upload?.cancel();
+    upload = null;
     await ssh?.disconnect();
     await rdp?.disconnect();
     filesSidebarOpen = false;
@@ -71,6 +75,8 @@ class LiveSession {
   }
 
   Future<void> dispose() async {
+    upload?.cancel();
+    upload = null;
     await subscription?.cancel();
     subscription = null;
     await cwdSubscription?.cancel();

@@ -10,13 +10,16 @@ import 'package:xterm/xterm.dart';
 import 'models/connection_snapshot.dart';
 import 'models/live_session.dart';
 import 'models/remote_entry.dart';
+import 'models/remote_system_stats.dart';
 import 'models/saved_session.dart';
+import 'models/upload_job.dart';
 import 'services/app_log.dart';
 import 'services/rdp_session_service.dart';
 import 'services/session_storage.dart';
 import 'services/ssh_session_service.dart';
 import 'widgets/morixtrem_logo.dart';
 import 'widgets/ssh_terminal_pane.dart';
+import 'widgets/welcome_pane.dart';
 
 class Moba {
   static const bg = Color(0xFF2B2B2B);
@@ -29,6 +32,114 @@ class Moba {
   static const ssh = Color(0xFFE6B422);
   static const rdp = Color(0xFF5B9BD5);
   static const status = Color(0xFF1B7A5A);
+  static const toastSuccess = Color(0xFF1F4D3A);
+  static const toastError = Color(0xFF5A2222);
+  static const toastWarning = Color(0xFF5A4520);
+  static const toastInfo = Color(0xFF2A3B4D);
+  static const toastSuccessAccent = Color(0xFF4CAF7A);
+  static const toastErrorAccent = Color(0xFFFF6B6B);
+  static const toastWarningAccent = Color(0xFFE6B422);
+  static const toastInfoAccent = Color(0xFF5B9BD5);
+}
+
+enum ToastKind { info, success, warning, error }
+
+void showAppToast(
+  BuildContext context,
+  String message, {
+  ToastKind kind = ToastKind.info,
+}) {
+  final (bg, accent, icon) = switch (kind) {
+    ToastKind.success => (
+        Moba.toastSuccess,
+        Moba.toastSuccessAccent,
+        Icons.check_circle_rounded
+      ),
+    ToastKind.error => (
+        Moba.toastError,
+        Moba.toastErrorAccent,
+        Icons.error_rounded
+      ),
+    ToastKind.warning => (
+        Moba.toastWarning,
+        Moba.toastWarningAccent,
+        Icons.warning_amber_rounded
+      ),
+    ToastKind.info => (
+        Moba.toastInfo,
+        Moba.toastInfoAccent,
+        Icons.info_rounded
+      ),
+  };
+
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        padding: EdgeInsets.zero,
+        duration: Duration(
+          milliseconds: kind == ToastKind.error ? 4500 : 3200,
+        ),
+        content: Material(
+          color: bg,
+          elevation: 6,
+          shadowColor: Colors.black54,
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: accent.withValues(alpha: 0.35)),
+            ),
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    width: 4,
+                    decoration: BoxDecoration(
+                      color: accent,
+                      borderRadius: const BorderRadius.horizontal(
+                        left: Radius.circular(10),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 4, 12),
+                    child: Icon(icon, size: 20, color: accent),
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(4, 12, 8, 12),
+                      child: Text(
+                        message,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          height: 1.35,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () =>
+                        ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+                    icon: const Icon(Icons.close, size: 16),
+                    color: Colors.white54,
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'Dismiss',
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
 }
 
 void main() {
@@ -171,14 +282,11 @@ class _WorkspacePageState extends State<WorkspacePage> {
     final updated = [...sessions]..removeAt(index);
     setState(() => sessions = updated);
     await sessionStorage.saveAll(updated);
-    showMessage('جلسه حذف شد');
+    showMessage('Session deleted', kind: ToastKind.success);
   }
 
-  void showMessage(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-          SnackBar(content: Text(message), backgroundColor: Moba.toolbar));
+  void showMessage(String message, {ToastKind kind = ToastKind.info}) {
+    showAppToast(context, message, kind: kind);
   }
 
   Future<void> _replaceSession(
@@ -225,18 +333,22 @@ class _WorkspacePageState extends State<WorkspacePage> {
     final value = name?.trim() ?? '';
     if (value.isEmpty || !mounted) return;
     if (folders.contains(value)) {
-      showMessage('این پوشه از قبل وجود دارد');
+      showMessage('A folder with this name already exists',
+          kind: ToastKind.warning);
       return;
     }
     final previous = folders;
     setState(() => folders = {...folders, value});
     try {
       await sessionStorage.saveFolders(folders);
-      if (mounted) showMessage('پوشه ایجاد شد؛ session را روی آن بکشید');
+      if (mounted) {
+        showMessage('Folder created — drag a session onto it',
+            kind: ToastKind.success);
+      }
     } catch (error) {
       if (mounted) {
         setState(() => folders = previous);
-        showMessage('ساخت پوشه ناموفق بود: $error');
+        showMessage('Could not create folder: $error', kind: ToastKind.error);
       }
     }
   }
@@ -252,14 +364,16 @@ class _WorkspacePageState extends State<WorkspacePage> {
     try {
       await sessionStorage.saveAll(updated);
       if (mounted) {
-        showMessage(folder == null
-            ? 'session به بخش بدون پوشه منتقل شد'
-            : 'session به پوشهٔ $folder منتقل شد');
+        showMessage(
+            folder == null
+                ? 'Session moved to No folder'
+                : 'Session moved to “$folder”',
+            kind: ToastKind.success);
       }
     } catch (error) {
       if (mounted) {
         setState(() => sessions = previous);
-        showMessage('جابجایی session ناموفق بود: $error');
+        showMessage('Could not move session: $error', kind: ToastKind.error);
       }
     }
   }
@@ -284,7 +398,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
     if (value.isEmpty || !mounted) return;
     if (value == folder) return;
     if (folders.contains(value)) {
-      showMessage('A folder with this name already exists');
+      showMessage('A folder with this name already exists',
+          kind: ToastKind.warning);
       return;
     }
 
@@ -306,7 +421,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
     try {
       await sessionStorage.saveAll(updatedSessions);
       await sessionStorage.saveFolders(folders);
-      if (mounted) showMessage('Folder renamed to $value');
+      if (mounted) showMessage('Folder renamed to $value', kind: ToastKind.success);
     } catch (error) {
       if (mounted) {
         setState(() {
@@ -316,7 +431,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
             ..clear()
             ..addAll(previousCollapsed);
         });
-        showMessage('Could not rename folder: $error');
+        showMessage('Could not rename folder: $error', kind: ToastKind.error);
       }
     }
   }
@@ -357,9 +472,11 @@ class _WorkspacePageState extends State<WorkspacePage> {
     await sessionStorage.saveAll(updatedSessions);
     await sessionStorage.saveFolders(folders);
     if (mounted) {
-      showMessage(count == 0
-          ? 'Folder deleted'
-          : 'Folder deleted. Sessions moved to No folder.');
+      showMessage(
+          count == 0
+              ? 'Folder deleted'
+              : 'Folder deleted. Sessions moved to No folder.',
+          kind: ToastKind.success);
     }
   }
 
@@ -398,7 +515,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
       try {
         live.explorerPath = await live.ssh!.homeDir();
       } catch (error) {
-        if (mounted) showMessage('خواندن پوشه خانگی ناموفق بود: $error');
+        if (mounted) showMessage('Could not open home folder: $error', kind: ToastKind.error);
         return;
       }
     }
@@ -496,11 +613,11 @@ class _WorkspacePageState extends State<WorkspacePage> {
           await _openSshFilesSidebar(live!);
         }
       } on RdpException catch (error) {
-        if (mounted) showMessage(error.message);
+        if (mounted) showMessage(error.message, kind: ToastKind.error);
       } on SshException catch (error) {
-        if (mounted) showMessage(error.message);
+        if (mounted) showMessage(error.message, kind: ToastKind.error);
       } catch (error) {
-        if (mounted) showMessage('اتصال ناموفق بود: $error');
+        if (mounted) showMessage('Connection failed: $error', kind: ToastKind.error);
       }
     } finally {
       _connectingSessionKeys.remove(key);
@@ -532,7 +649,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
     final live = focused;
     if (live == null) return;
     await _closeLive(live);
-    if (mounted) showMessage('اتصال قطع شد');
+    if (mounted) showMessage('Disconnected', kind: ToastKind.info);
   }
 
   Future<void> _openFilesPane() async {
@@ -540,7 +657,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
     await AppLog.line(
         'files pane focused=${live?.bookmark.name} ssh=$sshConnected rdp=$rdpConnected');
     if (live == null || !live.connected) {
-      showMessage('اول به یک جلسه SSH یا RDP وصل شوید، بعد Files را باز کنید');
+      showMessage('Connect an SSH or RDP session first, then open Files',
+          kind: ToastKind.warning);
       return;
     }
     if (live.isSsh) {
@@ -559,7 +677,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
         if (!mounted) return;
         live.explorerPath = start;
       } catch (error) {
-        if (mounted) showMessage('خواندن پوشه خانگی ناموفق بود: $error');
+        if (mounted) showMessage('Could not open home folder: $error', kind: ToastKind.error);
         return;
       }
     }
@@ -579,6 +697,13 @@ class _WorkspacePageState extends State<WorkspacePage> {
       selectedPaths: live.selectedPaths,
       clipboard: live.clipboard,
       busy: live.explorerBusy,
+      upload: live.upload,
+      onCancelUpload: live.upload == null
+          ? null
+          : () {
+              live.upload?.cancel();
+              setState(() {});
+            },
       canGoUp: canGoUp,
       compact: compact,
       following: live.followTerminalCwd,
@@ -604,11 +729,11 @@ class _WorkspacePageState extends State<WorkspacePage> {
   Future<void> _copyExplorerPath(LiveSession live, {String? itemPath}) async {
     final value = (itemPath ?? live.explorerPath).trim();
     if (value.isEmpty) {
-      showMessage('مسیری برای کپی نیست');
+      showMessage('No path to copy', kind: ToastKind.warning);
       return;
     }
     await Clipboard.setData(ClipboardData(text: value));
-    if (mounted) showMessage('Path copied');
+    if (mounted) showMessage('Path copied', kind: ToastKind.success);
   }
 
   Future<void> _refreshFiles([LiveSession? target]) async {
@@ -627,7 +752,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
       });
     } catch (error) {
       await AppLog.line('refresh files failed: $error');
-      if (mounted) showMessage('خواندن فایل‌ها ناموفق بود: $error');
+      if (mounted) showMessage('Could not list files: $error', kind: ToastKind.error);
     } finally {
       if (mounted) setState(() => live.explorerBusy = false);
     }
@@ -676,7 +801,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
   void _copySelection({required bool cut, LiveSession? target}) {
     final live = target ?? focused;
     if (live == null || live.selectedPaths.isEmpty) {
-      showMessage('اول یک فایل یا پوشه را انتخاب کنید');
+      showMessage('Select a file or folder first', kind: ToastKind.warning);
       return;
     }
     setState(() {
@@ -685,16 +810,18 @@ class _WorkspacePageState extends State<WorkspacePage> {
           cut: cut,
           sourceDir: live.explorerPath);
     });
-    showMessage(cut
-        ? 'بریده شد — به پوشه مقصد بروید و Paste کنید'
-        : 'کپی شد — به پوشه مقصد بروید و Paste کنید');
+    showMessage(
+        cut
+            ? 'Cut — go to the destination folder and Paste'
+            : 'Copied — go to the destination folder and Paste',
+        kind: ToastKind.info);
   }
 
   Future<void> _pasteClipboard({LiveSession? target}) async {
     final live = target ?? focused;
     final clip = live?.clipboard;
     if (live == null || clip == null || clip.isEmpty) {
-      showMessage('چیزی برای چسباندن نیست');
+      showMessage('Clipboard is empty', kind: ToastKind.warning);
       return;
     }
     final dest = live.explorerPath;
@@ -702,7 +829,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
         .where((path) => RemoteEntry.parent(path) != dest && path != dest)
         .toList();
     if (sources.isEmpty) {
-      showMessage('به پوشه دیگری بروید و بعد Paste کنید');
+      showMessage('Open another folder, then Paste', kind: ToastKind.warning);
       return;
     }
     setState(() => live.explorerBusy = true);
@@ -721,11 +848,11 @@ class _WorkspacePageState extends State<WorkspacePage> {
         }
       }
       if (clip.cut && mounted) setState(() => live.clipboard = null);
-      if (mounted) showMessage(clip.cut ? 'منتقل شد' : 'کپی شد');
+      if (mounted) showMessage(clip.cut ? 'Moved' : 'Copied', kind: ToastKind.success);
       await _refreshFiles(live);
     } catch (error) {
       await AppLog.line('paste failed: $error');
-      if (mounted) showMessage('عملیات فایل ناموفق بود: $error');
+      if (mounted) showMessage('File operation failed: $error', kind: ToastKind.error);
     } finally {
       if (mounted) setState(() => live.explorerBusy = false);
     }
@@ -734,7 +861,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
   Future<void> _createRemoteFolder({LiveSession? target}) async {
     final live = target ?? focused;
     if (live == null || !live.connected) {
-      showMessage('Connect a session first');
+      showMessage('Connect a session first', kind: ToastKind.warning);
       return;
     }
     final name = await showDialog<String>(
@@ -755,11 +882,11 @@ class _WorkspacePageState extends State<WorkspacePage> {
       } else {
         await live.rdp!.mkdirShared(live.explorerPath, folderName);
       }
-      if (mounted) showMessage('Folder created');
+      if (mounted) showMessage('Folder created', kind: ToastKind.success);
       await _refreshFiles(live);
     } catch (error) {
       await AppLog.line('mkdir failed: $error');
-      if (mounted) showMessage('Could not create folder: $error');
+      if (mounted) showMessage('Could not create folder: $error', kind: ToastKind.error);
     } finally {
       if (mounted) setState(() => live.explorerBusy = false);
     }
@@ -768,11 +895,11 @@ class _WorkspacePageState extends State<WorkspacePage> {
   Future<void> _renameSelection({LiveSession? target}) async {
     final live = target ?? focused;
     if (live == null || !live.connected) {
-      showMessage('Connect a session first');
+      showMessage('Connect a session first', kind: ToastKind.warning);
       return;
     }
     if (live.selectedPaths.length != 1) {
-      showMessage('Select exactly one item to rename');
+      showMessage('Select exactly one item to rename', kind: ToastKind.warning);
       return;
     }
     final path = live.selectedPaths.first;
@@ -793,11 +920,11 @@ class _WorkspacePageState extends State<WorkspacePage> {
       live.selectedPaths
         ..clear()
         ..add(RemoteEntry.join(RemoteEntry.parent(path), newName.trim()));
-      if (mounted) showMessage('Renamed');
+      if (mounted) showMessage('Renamed', kind: ToastKind.success);
       await _refreshFiles(live);
     } catch (error) {
       await AppLog.line('rename failed: $error');
-      if (mounted) showMessage('Rename failed: $error');
+      if (mounted) showMessage('Rename failed: $error', kind: ToastKind.error);
     } finally {
       if (mounted) setState(() => live.explorerBusy = false);
     }
@@ -806,11 +933,11 @@ class _WorkspacePageState extends State<WorkspacePage> {
   Future<void> _chmodSelection({LiveSession? target}) async {
     final live = target ?? focused;
     if (live == null || !live.connected) {
-      showMessage('Connect a session first');
+      showMessage('Connect a session first', kind: ToastKind.warning);
       return;
     }
     if (live.selectedPaths.isEmpty) {
-      showMessage('Select a file or folder first');
+      showMessage('Select a file or folder first', kind: ToastKind.warning);
       return;
     }
     final paths = live.selectedPaths.toList();
@@ -842,14 +969,16 @@ class _WorkspacePageState extends State<WorkspacePage> {
             mode: result.mode, recursive: result.recursive);
       }
       if (mounted) {
-        showMessage(result.recursive
-            ? 'Permissions ${result.mode} applied recursively'
-            : 'Permissions ${result.mode} applied');
+        showMessage(
+            result.recursive
+                ? 'Permissions ${result.mode} applied recursively'
+                : 'Permissions ${result.mode} applied',
+            kind: ToastKind.success);
       }
       await _refreshFiles(live);
     } catch (error) {
       await AppLog.line('chmod failed: $error');
-      if (mounted) showMessage('Permission change failed: $error');
+      if (mounted) showMessage('Permission change failed: $error', kind: ToastKind.error);
     } finally {
       if (mounted) setState(() => live.explorerBusy = false);
     }
@@ -860,27 +989,117 @@ class _WorkspacePageState extends State<WorkspacePage> {
     await AppLog.line(
         'upload click ssh=$sshConnected rdp=$rdpConnected path=${live?.explorerPath}');
     if (live == null || !live.connected) {
-      showMessage('اول به یک جلسه SSH یا RDP وصل شوید');
+      showMessage('Connect an SSH or RDP session first', kind: ToastKind.warning);
       return;
     }
-    final file = await openFile(confirmButtonText: 'انتخاب');
+    if (live.upload != null) {
+      showMessage('Another upload is already in progress', kind: ToastKind.warning);
+      return;
+    }
+    final file = await openFile(confirmButtonText: 'Select');
     if (file == null) return;
-    setState(() => live.explorerBusy = true);
+    final total = await file.length();
+    final job = UploadJob(fileName: file.name, totalBytes: total);
+    var lastUi = DateTime.fromMillisecondsSinceEpoch(0);
+    void bumpUi({bool force = false}) {
+      final now = DateTime.now();
+      if (!force &&
+          now.difference(lastUi).inMilliseconds < 80 &&
+          job.sentBytes < job.totalBytes) {
+        return;
+      }
+      lastUi = now;
+      if (mounted) setState(() {});
+    }
+
+    setState(() {
+      live.explorerBusy = true;
+      live.upload = job;
+    });
     try {
       if (live.isSsh) {
-        await live.ssh!.uploadFile(file.path,
-            remoteDir: live.explorerPath.isEmpty ? '.' : live.explorerPath);
-        if (mounted) showMessage('فایل ${file.name} با SCP ارسال شد');
+        // Poll UI while SFTP progress callbacks update job fields.
+        final ticker = Timer.periodic(const Duration(milliseconds: 120), (_) {
+          if (live.upload == job) bumpUi();
+        });
+        try {
+          await live.ssh!.uploadFile(
+            file.path,
+            remoteDir: live.explorerPath.isEmpty ? '.' : live.explorerPath,
+            job: job,
+          );
+        } finally {
+          ticker.cancel();
+        }
+        if (mounted) showMessage('Uploaded ${file.name}', kind: ToastKind.success);
       } else {
-        await live.rdp!.shareLocalFile(file.path, destDir: live.explorerPath);
-        if (mounted) showMessage('فایل در درایو اشتراکی قرار گرفت');
+        await _uploadSharedWithProgress(live, file.path, job, bumpUi);
+        if (mounted) showMessage('File added to the shared drive', kind: ToastKind.success);
       }
       await _refreshFiles(live);
+    } on UploadCancelledException {
+      if (mounted) showMessage('Upload cancelled', kind: ToastKind.warning);
     } catch (error) {
       await AppLog.line('upload failed: $error');
-      if (mounted) showMessage('ارسال فایل ناموفق بود: $error');
+      if (mounted) showMessage('Upload failed: $error', kind: ToastKind.error);
     } finally {
-      if (mounted) setState(() => live.explorerBusy = false);
+      if (mounted) {
+        setState(() {
+          live.explorerBusy = false;
+          live.upload = null;
+        });
+      } else {
+        live.explorerBusy = false;
+        live.upload = null;
+      }
+    }
+  }
+
+  Future<void> _uploadSharedWithProgress(
+    LiveSession live,
+    String localPath,
+    UploadJob job,
+    void Function({bool force}) bumpUi,
+  ) async {
+    final destDirPath = live.explorerPath.isEmpty
+        ? (await RdpSessionService.ensureShareDir()).path
+        : live.explorerPath;
+    final targetDir = Directory(destDirPath);
+    await targetDir.create(recursive: true);
+    final name = localPath.split(Platform.pathSeparator).last;
+    final outPath = '${targetDir.path}${Platform.pathSeparator}$name';
+    final sink = File(outPath).openWrite();
+    var sent = 0;
+    try {
+      job.bindCancel(() {
+        // Closing the sink interrupts the pipe on the next write.
+        unawaited(sink.close());
+      });
+      job.throwIfCancelled();
+      await for (final chunk in File(localPath).openRead()) {
+        job.throwIfCancelled();
+        sink.add(chunk);
+        sent += chunk.length;
+        job.report(sent);
+        bumpUi();
+      }
+      await sink.flush();
+      await sink.close();
+      job.report(job.totalBytes);
+      bumpUi(force: true);
+    } catch (error) {
+      try {
+        await sink.close();
+      } catch (_) {}
+      try {
+        await File(outPath).delete();
+      } catch (_) {}
+      if (job.cancelling || error is UploadCancelledException) {
+        throw UploadCancelledException();
+      }
+      rethrow;
+    } finally {
+      job.clearCancel();
     }
   }
 
@@ -911,7 +1130,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
             : result.session.copyWith(password: null))
         .copyWith(folder: original.folder);
     await _replaceSession(original, updated);
-    showMessage('تنظیمات session ذخیره شد');
+    showMessage('Session settings saved', kind: ToastKind.success);
   }
 
   Future<void> _changeTabColor(String liveId, int? tabColorArgb) async {
@@ -997,7 +1216,10 @@ class _WorkspacePageState extends State<WorkspacePage> {
                         child: IndexedStack(
                           index: paneIndex,
                           children: [
-                            const _WelcomePane(),
+                            WelcomePane(
+                              onNewSession: _openNewSession,
+                              onOpenFiles: _openFilesPane,
+                            ),
                             live == null
                                 ? const ColoredBox(
                                     color: Color(0xFF1A1A1A),
@@ -1028,6 +1250,10 @@ class _WorkspacePageState extends State<WorkspacePage> {
                                               ? () => _toggleFilesSidebar(item)
                                               : null,
                                       filesOpen: showSidebar,
+                                      fetchSystemStats:
+                                          item.isSsh && item.connected
+                                              ? () => item.ssh!.fetchSystemStats()
+                                              : null,
                                     ),
                                   ),
                                   if (showSidebar) ...[
@@ -1792,45 +2018,6 @@ class _AboutChip extends StatelessWidget {
   }
 }
 
-class _WelcomePane extends StatelessWidget {
-  const _WelcomePane();
-
-  @override
-  Widget build(BuildContext context) {
-    return ColoredBox(
-      color: Moba.terminal,
-      child: Align(
-        alignment: Alignment.topLeft,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(28, 28, 24, 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const MorixtermWordmark(logoSize: 64),
-              const SizedBox(height: 18),
-              Text(
-                [
-                  'SSH / RDP client',
-                  '',
-                  '  Session     create SSH or RDP connection',
-                  '  Files       browse folders, copy/cut/paste, SCP upload',
-                  '  Several SSH and RDP sessions can stay open together',
-                ].join('\n'),
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 14,
-                  height: 1.45,
-                  color: Color(0xFF9CDCFE),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _FilesPane extends StatelessWidget {
   const _FilesPane({
     required this.ssh,
@@ -1840,6 +2027,8 @@ class _FilesPane extends StatelessWidget {
     required this.selectedPaths,
     required this.clipboard,
     required this.busy,
+    this.upload,
+    this.onCancelUpload,
     required this.canGoUp,
     required this.onOpen,
     required this.onUp,
@@ -1867,6 +2056,8 @@ class _FilesPane extends StatelessWidget {
   final Set<String> selectedPaths;
   final FileClipboard? clipboard;
   final bool busy;
+  final UploadJob? upload;
+  final VoidCallback? onCancelUpload;
   final bool canGoUp;
   final bool compact;
   final bool following;
@@ -2114,7 +2305,7 @@ class _FilesPane extends StatelessWidget {
                   Expanded(
                     child: !ready
                         ? const Center(
-                            child: Text('اول یک جلسه را وصل کنید',
+                            child: Text('Connect a session first',
                                 style: TextStyle(color: Colors.white38)))
                         : Stack(children: [
                             CustomScrollView(
@@ -2229,11 +2420,26 @@ class _FilesPane extends StatelessWidget {
                               ],
                             ),
                             if (busy)
-                              const ColoredBox(
-                                  color: Color(0x33000000),
-                                  child: Center(
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2))),
+                              ColoredBox(
+                                color: const Color(0x99000000),
+                                child: Center(
+                                  child: upload != null
+                                      ? _UploadProgressCard(
+                                          job: upload!,
+                                          onCancel: upload!.cancelling
+                                              ? null
+                                              : onCancelUpload,
+                                        )
+                                      : const SizedBox(
+                                          width: 28,
+                                          height: 28,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Moba.green,
+                                          ),
+                                        ),
+                                ),
+                              ),
                           ]),
                   ),
                   if (clipboard != null)
@@ -2257,6 +2463,145 @@ class _FilesPane extends StatelessWidget {
 }
 
 enum _ExplorerAction { copy, cut, paste, rename, up, refresh }
+
+class _UploadProgressCard extends StatelessWidget {
+  const _UploadProgressCard({required this.job, this.onCancel});
+
+  final UploadJob job;
+  final VoidCallback? onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final fraction = job.fraction;
+    final indeterminate = fraction == null;
+    final percentLabel = indeterminate ? '…' : '${job.percent}%';
+    final sizeLabel = indeterminate
+        ? formatTransferBytes(job.totalBytes)
+        : '${formatTransferBytes(job.sentBytes)} / ${formatTransferBytes(job.totalBytes)}';
+    final speedLabel = formatTransferSpeed(job.bytesPerSecond);
+    final cancelling = job.cancelling;
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 320),
+      child: Material(
+        color: const Color(0xFF2A2A2A),
+        elevation: 8,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: Moba.green.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.upload_rounded,
+                        size: 18, color: Moba.green),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          cancelling ? 'Cancelling upload…' : 'Uploading',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.white54,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          job.fileName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    percentLabel,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: Moba.green,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: indeterminate ? null : fraction,
+                  minHeight: 7,
+                  backgroundColor: const Color(0xFF3A3A3A),
+                  color: cancelling ? Colors.orangeAccent : Moba.green,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      sizeLabel,
+                      style: const TextStyle(
+                          fontSize: 11, color: Colors.white60),
+                    ),
+                  ),
+                  Text(
+                    speedLabel,
+                    style: const TextStyle(
+                        fontSize: 11, color: Colors.white54),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: onCancel,
+                  style: TextButton.styleFrom(
+                    foregroundColor: cancelling
+                        ? Colors.white38
+                        : const Color(0xFFFF8A80),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  icon: Icon(
+                    cancelling ? Icons.hourglass_top : Icons.close,
+                    size: 15,
+                  ),
+                  label: Text(
+                    cancelling ? 'Cancelling' : 'Cancel',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _ExplorerIntent extends Intent {
   const _ExplorerIntent(this.kind);
@@ -2914,13 +3259,13 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
   void _submit() {
     final address = host.text.trim();
     if (address.isEmpty || user.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Host and username are required')));
+      showAppToast(context, 'Host and username are required',
+          kind: ToastKind.warning);
       return;
     }
     if (protocol == SessionProtocol.rdp && password.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('RDP password is required')));
+      showAppToast(context, 'RDP password is required',
+          kind: ToastKind.warning);
       return;
     }
     Navigator.pop(context, (
@@ -3117,6 +3462,7 @@ class _SessionSurface extends StatelessWidget {
     this.onRetry,
     this.onToggleFiles,
     this.filesOpen = false,
+    this.fetchSystemStats,
   });
 
   final ConnectionSnapshot snapshot;
@@ -3126,6 +3472,7 @@ class _SessionSurface extends StatelessWidget {
   final VoidCallback? onRetry;
   final VoidCallback? onToggleFiles;
   final bool filesOpen;
+  final Future<RemoteSystemStats> Function()? fetchSystemStats;
 
   @override
   Widget build(BuildContext context) {
@@ -3143,6 +3490,7 @@ class _SessionSurface extends StatelessWidget {
           terminal: terminal!,
           onToggleFiles: onToggleFiles,
           filesOpen: filesOpen,
+          fetchSystemStats: fetchSystemStats,
         ),
       );
     }
@@ -3404,13 +3752,13 @@ class _PermissionsDialogState extends State<_PermissionsDialog> {
       child: InkWell(
         onTap: () => onChanged(!value),
         mouseCursor: WidgetStateMouseCursor.clickable,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(6),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 140),
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          padding: const EdgeInsets.symmetric(vertical: 5),
           decoration: BoxDecoration(
             color: value ? Moba.green.withValues(alpha: 0.22) : const Color(0xFF2A2A2A),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(6),
             border: Border.all(
               color: value ? Moba.green : const Color(0xFF444444),
             ),
@@ -3420,16 +3768,15 @@ class _PermissionsDialogState extends State<_PermissionsDialog> {
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: 15,
+                  fontSize: 12,
                   fontWeight: FontWeight.w700,
                   color: value ? Moba.green : Colors.white54,
                 ),
               ),
-              const SizedBox(height: 2),
               Text(
                 hint,
                 style: TextStyle(
-                  fontSize: 10,
+                  fontSize: 9,
                   color: value ? Colors.white70 : Colors.white38,
                 ),
               ),
@@ -3449,11 +3796,11 @@ class _PermissionsDialogState extends State<_PermissionsDialog> {
     required void Function(bool, bool, bool) onChanged,
   }) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
       decoration: BoxDecoration(
         color: const Color(0xFF252525),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: const Color(0xFF3A3A3A)),
       ),
       child: Column(
@@ -3461,21 +3808,21 @@ class _PermissionsDialogState extends State<_PermissionsDialog> {
         children: [
           Row(
             children: [
-              Icon(icon, size: 16, color: Moba.green),
-              const SizedBox(width: 8),
+              Icon(icon, size: 13, color: Moba.green),
+              const SizedBox(width: 6),
               Text(title,
                   style: const TextStyle(
-                      fontWeight: FontWeight.w600, fontSize: 13)),
+                      fontWeight: FontWeight.w600, fontSize: 11)),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 5),
           Row(
             children: [
               _bit('R', 'Read', r, (v) => onChanged(v, w, x)),
-              const SizedBox(width: 8),
+              const SizedBox(width: 5),
               _bit('W', 'Write', w, (v) => onChanged(r, v, x)),
-              const SizedBox(width: 8),
-              _bit('X', 'Execute', x, (v) => onChanged(r, w, v)),
+              const SizedBox(width: 5),
+              _bit('X', 'Exec', x, (v) => onChanged(r, w, v)),
             ],
           ),
         ],
@@ -3489,12 +3836,12 @@ class _PermissionsDialogState extends State<_PermissionsDialog> {
       child: InkWell(
         onTap: () => _applyPreset(mode),
         mouseCursor: WidgetStateMouseCursor.clickable,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(6),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(vertical: 5),
           decoration: BoxDecoration(
             color: selected ? Moba.green.withValues(alpha: 0.2) : Moba.toolbar,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(6),
             border: Border.all(
               color: selected ? Moba.green : const Color(0xFF4A4A4A),
             ),
@@ -3504,12 +3851,13 @@ class _PermissionsDialogState extends State<_PermissionsDialog> {
               Text(mode,
                   style: TextStyle(
                     fontFamily: 'monospace',
+                    fontSize: 12,
                     fontWeight: FontWeight.w700,
                     color: selected ? Moba.green : Colors.white,
                   )),
               Text(label,
                   style: TextStyle(
-                    fontSize: 10,
+                    fontSize: 9,
                     color: selected ? Colors.white70 : Colors.white38,
                   )),
             ],
@@ -3530,18 +3878,20 @@ class _PermissionsDialogState extends State<_PermissionsDialog> {
     final title = widget.itemCount == 1
         ? 'Permissions'
         : 'Permissions · ${widget.itemCount} items';
+    final maxBodyHeight = MediaQuery.sizeOf(context).height * 0.72;
 
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       child: Container(
-        width: 460,
+        width: 360,
+        constraints: BoxConstraints(maxHeight: maxBodyHeight),
         decoration: BoxDecoration(
           color: Moba.panel,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: const Color(0xFF3A3A3A)),
           boxShadow: const [
-            BoxShadow(color: Colors.black54, blurRadius: 28, offset: Offset(0, 14)),
+            BoxShadow(color: Colors.black54, blurRadius: 20, offset: Offset(0, 10)),
           ],
         ),
         clipBehavior: Clip.antiAlias,
@@ -3549,7 +3899,7 @@ class _PermissionsDialogState extends State<_PermissionsDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.fromLTRB(20, 18, 16, 16),
+              padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
                   colors: [Color(0xFF2A3A32), Color(0xFF1E1E1E)],
@@ -3560,181 +3910,196 @@ class _PermissionsDialogState extends State<_PermissionsDialog> {
               child: Row(
                 children: [
                   Container(
-                    width: 42,
-                    height: 42,
+                    width: 30,
+                    height: 30,
                     decoration: BoxDecoration(
                       color: Moba.green.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Icon(Icons.lock_outline, color: Moba.green),
+                    child: const Icon(Icons.lock_outline, size: 16, color: Moba.green),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(title,
                             style: const TextStyle(
-                                fontSize: 17, fontWeight: FontWeight.w700)),
-                        const SizedBox(height: 2),
-                        const Text('Unix file mode · Owner / Group / Others',
-                            style: TextStyle(fontSize: 12, color: Colors.white54)),
+                                fontSize: 14, fontWeight: FontWeight.w700)),
+                        const Text('Owner / Group / Others',
+                            style: TextStyle(fontSize: 10, color: Colors.white54)),
                       ],
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: Colors.black38,
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(7),
                       border: Border.all(color: Moba.green.withValues(alpha: 0.45)),
                     ),
                     child: Text(
                       currentMode,
                       style: const TextStyle(
                         fontFamily: 'monospace',
-                        fontSize: 22,
+                        fontSize: 16,
                         fontWeight: FontWeight.w700,
                         color: Moba.green,
-                        letterSpacing: 2,
+                        letterSpacing: 1.5,
                       ),
                     ),
                   ),
                 ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text('Quick presets',
-                      style: TextStyle(fontSize: 12, color: Colors.white54)),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      _preset('755', 'Folders'),
-                      const SizedBox(width: 8),
-                      _preset('644', 'Files'),
-                      const SizedBox(width: 8),
-                      _preset('700', 'Private'),
-                      const SizedBox(width: 8),
-                      _preset('777', 'Open'),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: modeController,
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text('Quick presets',
+                        style: TextStyle(fontSize: 10, color: Colors.white54)),
+                    const SizedBox(height: 5),
+                    Row(
+                      children: [
+                        _preset('755', 'Folders'),
+                        const SizedBox(width: 5),
+                        _preset('644', 'Files'),
+                        const SizedBox(width: 5),
+                        _preset('700', 'Private'),
+                        const SizedBox(width: 5),
+                        _preset('777', 'Open'),
+                      ],
                     ),
-                    decoration: InputDecoration(
-                      labelText: 'Octal mode',
-                      hintText: '755',
-                      filled: true,
-                      fillColor: const Color(0xFF252525),
-                      prefixIcon: const Icon(Icons.tag, size: 18),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: Color(0xFF444444)),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: modeController,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
                       ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: Color(0xFF444444)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: Moba.green),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 10),
+                        labelText: 'Octal mode',
+                        hintText: '755',
+                        filled: true,
+                        fillColor: const Color(0xFF252525),
+                        prefixIcon: const Icon(Icons.tag, size: 16),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFF444444)),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFF444444)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Moba.green),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 14),
-                  _roleRow(
-                    title: 'Owner',
-                    icon: Icons.person_outline,
-                    r: ownerR,
-                    w: ownerW,
-                    x: ownerX,
-                    onChanged: (r, w, x) {
-                      ownerR = r;
-                      ownerW = w;
-                      ownerX = x;
-                      _fromChecks();
-                    },
-                  ),
-                  _roleRow(
-                    title: 'Group',
-                    icon: Icons.groups_outlined,
-                    r: groupR,
-                    w: groupW,
-                    x: groupX,
-                    onChanged: (r, w, x) {
-                      groupR = r;
-                      groupW = w;
-                      groupX = x;
-                      _fromChecks();
-                    },
-                  ),
-                  _roleRow(
-                    title: 'Others',
-                    icon: Icons.public_outlined,
-                    r: otherR,
-                    w: otherW,
-                    x: otherX,
-                    onChanged: (r, w, x) {
-                      otherR = r;
-                      otherW = w;
-                      otherX = x;
-                      _fromChecks();
-                    },
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF252525),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFF3A3A3A)),
+                    const SizedBox(height: 8),
+                    _roleRow(
+                      title: 'Owner',
+                      icon: Icons.person_outline,
+                      r: ownerR,
+                      w: ownerW,
+                      x: ownerX,
+                      onChanged: (r, w, x) {
+                        ownerR = r;
+                        ownerW = w;
+                        ownerX = x;
+                        _fromChecks();
+                      },
                     ),
-                    child: SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      value: recursive,
-                      activeThumbColor: Moba.green,
-                      onChanged: (value) => setState(() => recursive = value),
-                      secondary: Icon(
-                        Icons.account_tree_outlined,
-                        color: recursive ? Moba.green : Colors.white54,
+                    _roleRow(
+                      title: 'Group',
+                      icon: Icons.groups_outlined,
+                      r: groupR,
+                      w: groupW,
+                      x: groupX,
+                      onChanged: (r, w, x) {
+                        groupR = r;
+                        groupW = w;
+                        groupX = x;
+                        _fromChecks();
+                      },
+                    ),
+                    _roleRow(
+                      title: 'Others',
+                      icon: Icons.public_outlined,
+                      r: otherR,
+                      w: otherW,
+                      x: otherX,
+                      onChanged: (r, w, x) {
+                        otherR = r;
+                        otherW = w;
+                        otherX = x;
+                        _fromChecks();
+                      },
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF252525),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFF3A3A3A)),
                       ),
-                      title: const Text('Recursive',
-                          style: TextStyle(fontWeight: FontWeight.w600)),
-                      subtitle: const Text('Apply to all subfolders and files (chmod -R)',
-                          style: TextStyle(fontSize: 11)),
+                      child: SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        visualDensity: VisualDensity.compact,
+                        value: recursive,
+                        activeThumbColor: Moba.green,
+                        onChanged: (value) => setState(() => recursive = value),
+                        secondary: Icon(
+                          Icons.account_tree_outlined,
+                          size: 18,
+                          color: recursive ? Moba.green : Colors.white54,
+                        ),
+                        title: const Text('Recursive',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w600, fontSize: 12)),
+                        subtitle: const Text('chmod -R on subfolders/files',
+                            style: TextStyle(fontSize: 10)),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
             Container(
-              padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
               decoration: const BoxDecoration(color: Color(0x22101010)),
               child: Row(
                 children: [
                   Text('chmod ${recursive ? '-R ' : ''}$currentMode',
                       style: const TextStyle(
                         fontFamily: 'monospace',
-                        fontSize: 12,
+                        fontSize: 11,
                         color: Colors.white38,
                       )),
                   const Spacer(),
                   TextButton(
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                      ),
                       onPressed: () => Navigator.pop(context),
                       child: const Text('Cancel')),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
                     onPressed: _apply,
-                    icon: const Icon(Icons.check, size: 18),
+                    icon: const Icon(Icons.check, size: 15),
                     label: const Text('Apply'),
                   ),
                 ],

@@ -1,7 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:xterm/xterm.dart';
+
+import '../models/remote_system_stats.dart';
+import '../services/session_storage.dart';
 
 class SshTerminalPane extends StatefulWidget {
   const SshTerminalPane({
@@ -9,11 +14,13 @@ class SshTerminalPane extends StatefulWidget {
     required this.terminal,
     this.onToggleFiles,
     this.filesOpen = false,
+    this.fetchSystemStats,
   });
 
   final Terminal terminal;
   final VoidCallback? onToggleFiles;
   final bool filesOpen;
+  final Future<RemoteSystemStats> Function()? fetchSystemStats;
 
   @override
   State<SshTerminalPane> createState() => _SshTerminalPaneState();
@@ -22,8 +29,16 @@ class SshTerminalPane extends StatefulWidget {
 class _SshTerminalPaneState extends State<SshTerminalPane> {
   late final TerminalController _controller;
   late final FocusNode _focusNode;
+  final SessionStorage _storage = SessionStorage();
   var _fontSize = 13.0;
   var _themeMode = _TerminalThemeMode.morixterm;
+  var _monitorEnabled = true;
+  var _monitorLoading = false;
+  RemoteSystemStats? _stats;
+  RemoteSystemStats? _prevStats;
+  String? _monitorError;
+  Timer? _monitorTimer;
+  var _polling = false;
 
   TerminalTheme get _theme {
     switch (_themeMode) {
@@ -118,6 +133,7 @@ class _SshTerminalPaneState extends State<SshTerminalPane> {
     _controller = TerminalController();
     _focusNode = FocusNode(debugLabel: 'ssh-terminal');
     WidgetsBinding.instance.addPostFrameCallback((_) => _focusTerminal());
+    unawaited(_loadMonitorPreference());
   }
 
   @override
@@ -127,6 +143,67 @@ class _SshTerminalPaneState extends State<SshTerminalPane> {
         oldWidget.filesOpen != widget.filesOpen) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _focusTerminal());
     }
+    if (oldWidget.fetchSystemStats != widget.fetchSystemStats) {
+      _syncMonitorTimer();
+    }
+  }
+
+  Future<void> _loadMonitorPreference() async {
+    final enabled = await _storage.loadSystemMonitorEnabled();
+    if (!mounted) return;
+    setState(() => _monitorEnabled = enabled);
+    _syncMonitorTimer();
+  }
+
+  void _syncMonitorTimer() {
+    _monitorTimer?.cancel();
+    _monitorTimer = null;
+    if (!_monitorEnabled || widget.fetchSystemStats == null) return;
+    unawaited(_pollMonitor());
+    _monitorTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => unawaited(_pollMonitor()),
+    );
+  }
+
+  Future<void> _pollMonitor() async {
+    final fetch = widget.fetchSystemStats;
+    if (!_monitorEnabled || fetch == null || _polling) return;
+    _polling = true;
+    try {
+      final next = await fetch();
+      if (!mounted || !_monitorEnabled) return;
+      setState(() {
+        _prevStats = _stats;
+        _stats = next;
+        _monitorError = null;
+        _monitorLoading = false;
+      });
+    } catch (error) {
+      if (!mounted || !_monitorEnabled) return;
+      setState(() {
+        _monitorError = '$error';
+        _monitorLoading = false;
+      });
+    } finally {
+      _polling = false;
+    }
+  }
+
+  Future<void> _toggleMonitor() async {
+    final next = !_monitorEnabled;
+    setState(() {
+      _monitorEnabled = next;
+      if (!next) {
+        _stats = null;
+        _prevStats = null;
+        _monitorError = null;
+      } else {
+        _monitorLoading = true;
+      }
+    });
+    await _storage.saveSystemMonitorEnabled(next);
+    _syncMonitorTimer();
   }
 
   void _focusTerminal() {
@@ -136,6 +213,7 @@ class _SshTerminalPaneState extends State<SshTerminalPane> {
 
   @override
   void dispose() {
+    _monitorTimer?.cancel();
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -245,8 +323,15 @@ class _SshTerminalPaneState extends State<SshTerminalPane> {
     final style = TerminalStyle(
       fontSize: _fontSize,
       fontFamily: 'Cascadia Mono',
-      fontFamilyFallback: const ['Cascadia Code', 'JetBrains Mono', 'Noto Sans Mono', 'Segoe UI Emoji', 'monospace'],
+      fontFamilyFallback: const [
+        'Cascadia Code',
+        'JetBrains Mono',
+        'Noto Sans Mono',
+        'Segoe UI Emoji',
+        'monospace'
+      ],
     );
+    final canMonitor = widget.fetchSystemStats != null;
     return Column(
       children: [
         _TerminalToolbar(
@@ -260,11 +345,14 @@ class _SshTerminalPaneState extends State<SshTerminalPane> {
           onThemeChanged: (value) => setState(() => _themeMode = value),
           onToggleFiles: widget.onToggleFiles,
           filesOpen: widget.filesOpen,
+          onToggleMonitor: canMonitor ? _toggleMonitor : null,
+          monitorEnabled: _monitorEnabled,
         ),
         Expanded(
           child: Listener(
             onPointerSignal: (event) {
-              if (event is PointerScrollEvent && HardwareKeyboard.instance.isControlPressed) {
+              if (event is PointerScrollEvent &&
+                  HardwareKeyboard.instance.isControlPressed) {
                 _zoom(event.scrollDelta.dy < 0 ? 1 : -1);
               }
             },
@@ -283,6 +371,14 @@ class _SshTerminalPaneState extends State<SshTerminalPane> {
             ),
           ),
         ),
+        if (canMonitor && _monitorEnabled)
+          _SystemMonitorBar(
+            stats: _stats,
+            previous: _prevStats,
+            loading: _monitorLoading && _stats == null,
+            error: _monitorError,
+            onHide: _toggleMonitor,
+          ),
       ],
     );
   }
@@ -317,6 +413,8 @@ class _TerminalToolbar extends StatelessWidget {
     required this.onThemeChanged,
     this.onToggleFiles,
     this.filesOpen = false,
+    this.onToggleMonitor,
+    this.monitorEnabled = false,
   });
 
   final double fontSize;
@@ -329,6 +427,8 @@ class _TerminalToolbar extends StatelessWidget {
   final ValueChanged<_TerminalThemeMode> onThemeChanged;
   final VoidCallback? onToggleFiles;
   final bool filesOpen;
+  final VoidCallback? onToggleMonitor;
+  final bool monitorEnabled;
 
   @override
   Widget build(BuildContext context) {
@@ -368,6 +468,16 @@ class _TerminalToolbar extends StatelessWidget {
               color: filesOpen ? const Color(0xFF3D9970) : null,
             ),
           ],
+          if (onToggleMonitor != null) ...[
+            _Tool(
+              icon: Icons.monitor_heart_outlined,
+              tooltip: monitorEnabled
+                  ? 'Hide system monitor'
+                  : 'Show system monitor',
+              onPressed: onToggleMonitor!,
+              color: monitorEnabled ? const Color(0xFF3D9970) : null,
+            ),
+          ],
           const Spacer(),
           Text('SSH • ${_themeLabel(themeMode)}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
         ],
@@ -399,6 +509,175 @@ class _Tool extends StatelessWidget {
       constraints: const BoxConstraints.tightFor(width: 30, height: 30),
       splashRadius: 16,
       color: color ?? Colors.white70,
+    );
+  }
+}
+
+class _SystemMonitorBar extends StatelessWidget {
+  const _SystemMonitorBar({
+    required this.stats,
+    required this.previous,
+    required this.loading,
+    required this.error,
+    required this.onHide,
+  });
+
+  final RemoteSystemStats? stats;
+  final RemoteSystemStats? previous;
+  final bool loading;
+  final String? error;
+  final VoidCallback onHide;
+
+  @override
+  Widget build(BuildContext context) {
+    final cpu = stats?.cpuPercentSince(previous);
+    final memFrac = stats?.memFraction;
+    final diskFrac = stats?.diskFraction;
+
+    return Material(
+      color: const Color(0xFF1A1D24),
+      child: Container(
+        height: 30,
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: Color(0xFF2E333C))),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        child: Row(
+          children: [
+            const Icon(Icons.monitor_heart_outlined,
+                size: 14, color: Color(0xFF3D9970)),
+            const SizedBox(width: 8),
+            if (loading && stats == null)
+              const Text(
+                'Reading remote system…',
+                style: TextStyle(fontSize: 11, color: Colors.white54),
+              )
+            else if (error != null && stats == null)
+              Expanded(
+                child: Text(
+                  'Monitor unavailable: $error',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11, color: Color(0xFFFF8A80)),
+                ),
+              )
+            else if (stats != null) ...[
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _MetricChip(
+                        label: 'CPU',
+                        value: cpu == null ? '…' : '${cpu.round()}%',
+                        fraction: cpu == null ? null : cpu / 100,
+                        color: const Color(0xFF5B9BD5),
+                      ),
+                      const SizedBox(width: 14),
+                      _MetricChip(
+                        label: 'RAM',
+                        value: memFrac == null
+                            ? '…'
+                            : '${_fmtGiB(stats!.memUsedKb)} / ${_fmtGiB(stats!.memTotalKb)}',
+                        fraction: memFrac,
+                        color: const Color(0xFFE6B422),
+                      ),
+                      const SizedBox(width: 14),
+                      _MetricChip(
+                        label: 'DISK',
+                        value: diskFrac == null
+                            ? '…'
+                            : '${_fmtGiB(stats!.diskUsedKb)} / ${_fmtGiB(stats!.diskTotalKb)}  ${stats!.diskMount}',
+                        fraction: diskFrac,
+                        color: const Color(0xFF3D9970),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ] else
+              const Expanded(
+                child: Text(
+                  'Waiting for stats…',
+                  style: TextStyle(fontSize: 11, color: Colors.white54),
+                ),
+              ),
+            IconButton(
+              tooltip: 'Hide monitor',
+              onPressed: onHide,
+              icon: const Icon(Icons.close, size: 14),
+              color: Colors.white38,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 24, height: 24),
+              splashRadius: 14,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _fmtGiB(int kb) {
+    final gib = kb / (1024 * 1024);
+    if (gib >= 10) return '${gib.round()}G';
+    if (gib >= 1) return '${gib.toStringAsFixed(1)}G';
+    final mib = kb / 1024;
+    if (mib >= 10) return '${mib.round()}M';
+    return '${mib.toStringAsFixed(1)}M';
+  }
+}
+
+class _MetricChip extends StatelessWidget {
+  const _MetricChip({
+    required this.label,
+    required this.value,
+    required this.fraction,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final double? fraction;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.6,
+            color: color,
+          ),
+        ),
+        const SizedBox(width: 6),
+        SizedBox(
+          width: 52,
+          height: 6,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: fraction,
+              backgroundColor: const Color(0xFF2A2F38),
+              color: color,
+              minHeight: 6,
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 11,
+            color: Colors.white70,
+            fontFeatures: [FontFeature.tabularFigures()],
+          ),
+        ),
+      ],
     );
   }
 }

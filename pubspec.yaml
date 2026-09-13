@@ -24,6 +24,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/logo.png
+    - assets/app_icon.png
     - assets/morixtrem-mark.png
     - assets/morixterm-brand.png
     - assets/wordmark.png

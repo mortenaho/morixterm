@@ -15,22 +15,27 @@ class ScpException implements Exception {
   String toString() => message;
 }
 
+class ScpCancelledException implements Exception {
+  @override
+  String toString() => 'Upload cancelled';
+}
+
 class ScpTransfer {
   static Future<String> homeDir(SSHClient client) async {
     final result = await client.runWithResult(r'printf %s "$HOME"');
     if ((result.exitCode ?? 0) != 0) {
-      throw ScpException('پوشه خانگی پیدا نشد');
+      throw ScpException('Home folder not found');
     }
     final home = utf8.decode(result.stdout, allowMalformed: true).trim();
-    if (home.isEmpty) throw ScpException('پوشه خانگی پیدا نشد');
+    if (home.isEmpty) throw ScpException('Home folder not found');
     return home;
   }
 
   static Future<List<RemoteEntry>> listEntries(SSHClient client, String path) async {
     try {
-      return _parseLs(await _run(client, 'LC_ALL=C ls -1Ap --quoting-style=literal -- ${_shellQuote(path)}', 'خواندن پوشه ناموفق بود'), path);
+      return _parseLs(await _run(client, 'LC_ALL=C ls -1Ap --quoting-style=literal -- ${_shellQuote(path)}', 'Could not list folder'), path);
     } on ScpException {
-      return _parseFind(await _run(client, 'find ${_shellQuote(path)} -mindepth 1 -maxdepth 1 -printf "%Y\\t%f\\n"', 'خواندن پوشه ناموفق بود'), path);
+      return _parseFind(await _run(client, 'find ${_shellQuote(path)} -mindepth 1 -maxdepth 1 -printf "%Y\\t%f\\n"', 'Could not list folder'), path);
     }
   }
 
@@ -69,11 +74,11 @@ class ScpTransfer {
   }
 
   static Future<void> copyTo(SSHClient client, List<String> sources, String destDir) async {
-    await _run(client, 'cp -a -- ${_args(sources, destDir)}', 'کپی فایل ناموفق بود');
+    await _run(client, 'cp -a -- ${_args(sources, destDir)}', 'Copy failed');
   }
 
   static Future<void> moveTo(SSHClient client, List<String> sources, String destDir) async {
-    await _run(client, 'mv -- ${_args(sources, destDir)}', 'انتقال فایل ناموفق بود');
+    await _run(client, 'mv -- ${_args(sources, destDir)}', 'Move failed');
   }
 
   static Future<void> mkdir(SSHClient client, String parentDir, String name) async {
@@ -154,14 +159,16 @@ class ScpTransfer {
     required SSHClient client,
     required String localPath,
     String remoteDir = '.',
+    void Function(int sent, int total)? onProgress,
+    bool Function()? isCancelled,
   }) async {
     final file = File(localPath);
     if (!file.existsSync()) {
-      throw ScpException('فایل محلی پیدا نشد');
+      throw ScpException('Local file not found');
     }
     final name = localPath.split(Platform.pathSeparator).last;
     if (!_safeName(name)) {
-      throw ScpException('نام فایل برای SCP نامعتبر است');
+      throw ScpException('Invalid file name for SCP');
     }
 
     final size = await file.length();
@@ -169,28 +176,65 @@ class ScpTransfer {
     final modeText = mode.toRadixString(8).padLeft(4, '0');
     final session = await client.execute('scp -t ${_shellQuote(remoteDir)}');
     final wire = _ScpWire(session);
+    // Scale timeouts with file size (about 1 min per 8 MiB, capped).
+    final ioTimeout = Duration(
+      seconds: (60 + (size ~/ (8 * 1024 * 1024)) * 60).clamp(90, 3600),
+    );
+    void checkCancel() {
+      if (isCancelled?.call() == true) {
+        throw ScpCancelledException();
+      }
+    }
+
     try {
-      await wire.expectOk();
+      checkCancel();
+      await wire.expectOk(timeout: ioTimeout);
+      checkCancel();
       session.write(Uint8List.fromList(utf8.encode('C$modeText $size $name\n')));
       await session.flush();
-      await wire.expectOk();
+      await wire.expectOk(timeout: ioTimeout);
+
+      var sent = 0;
+      var pending = 0;
+      const flushEvery = 256 * 1024;
+      onProgress?.call(0, size);
       await for (final chunk in file.openRead()) {
-        session.write(Uint8List.fromList(chunk));
+        checkCancel();
+        final bytes = Uint8List.fromList(chunk);
+        session.write(bytes);
+        pending += bytes.length;
+        sent += bytes.length;
+        onProgress?.call(sent.clamp(0, size), size);
+        if (pending >= flushEvery) {
+          await session.flush();
+          pending = 0;
+        }
       }
+      checkCancel();
+      if (pending > 0) await session.flush();
       session.write(Uint8List.fromList(const [0]));
       await session.flush();
-      await wire.expectOk();
+      await wire.expectOk(timeout: ioTimeout);
       await session.stdin.close();
-      await session.done.timeout(const Duration(seconds: 20));
+      await session.done.timeout(ioTimeout);
       if ((session.exitCode ?? 0) != 0) {
-        throw ScpException(wire.stderr.isEmpty ? 'ارسال SCP ناموفق بود' : wire.stderr.toString().trim());
+        throw ScpException(wire.stderr.isEmpty
+            ? 'SCP upload failed'
+            : wire.stderr.toString().trim());
       }
+      onProgress?.call(size, size);
+    } on ScpCancelledException {
+      try {
+        session.close();
+      } catch (_) {}
+      rethrow;
     } on TimeoutException {
-      throw ScpException('زمان ارسال SCP تمام شد');
+      throw ScpException('SCP upload timed out');
     } on ScpException {
       rethrow;
     } catch (error) {
-      final detail = wire.stderr.isEmpty ? '$error' : wire.stderr.toString().trim();
+      final detail =
+          wire.stderr.isEmpty ? '$error' : wire.stderr.toString().trim();
       throw ScpException(detail);
     } finally {
       await wire.dispose();
@@ -227,17 +271,17 @@ class _ScpWire {
   late final StreamSubscription<Uint8List> _stdout;
   late final StreamSubscription<Uint8List> _stderr;
 
-  Future<void> expectOk() async {
-    final code = await _readByte().timeout(const Duration(seconds: 20));
+  Future<void> expectOk({Duration timeout = const Duration(seconds: 30)}) async {
+    final code = await _readByte().timeout(timeout);
     if (code == 0) return;
     final message = StringBuffer();
     while (true) {
-      final next = await _readByte().timeout(const Duration(seconds: 20));
+      final next = await _readByte().timeout(timeout);
       if (next == 10) break;
       message.writeCharCode(next);
     }
     final text = message.toString().trim();
-    throw ScpException(text.isEmpty ? 'سرور SCP خطا داد' : text);
+    throw ScpException(text.isEmpty ? 'SCP server returned an error' : text);
   }
 
   Future<int> _readByte() async {
@@ -246,7 +290,7 @@ class _ScpWire {
       await _waiter!.future;
     }
     if (_buffer.isEmpty) {
-      throw ScpException(stderr.isEmpty ? 'اتصال SCP قطع شد' : stderr.toString().trim());
+      throw ScpException(stderr.isEmpty ? 'SCP connection closed' : stderr.toString().trim());
     }
     return _buffer.removeAt(0);
   }

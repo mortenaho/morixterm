@@ -14,6 +14,74 @@ struct _MyApplication {
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 
+static gboolean load_icon_pixbuf(const gchar* path, GdkPixbuf** out_pixbuf) {
+  if (path == nullptr || !g_file_test(path, G_FILE_TEST_IS_REGULAR)) {
+    return FALSE;
+  }
+  g_autoptr(GError) error = nullptr;
+  GdkPixbuf* pixbuf = gdk_pixbuf_new_from_file_at_size(path, 256, 256, &error);
+  if (pixbuf == nullptr) {
+    g_warning("morixterm: failed to load icon %s (%s)", path,
+              error != nullptr ? error->message : "unknown error");
+    return FALSE;
+  }
+  *out_pixbuf = pixbuf;
+  return TRUE;
+}
+
+// Helps GNOME/KDE taskbars map this process to a branded icon even under
+// `flutter run`, where no system .desktop entry exists yet.
+static void install_user_desktop_entry(const gchar* exe_path,
+                                       const gchar* icon_path) {
+  const gchar* home = g_get_home_dir();
+  if (home == nullptr || exe_path == nullptr || icon_path == nullptr) {
+    return;
+  }
+
+  g_autofree gchar* icon_dir = g_build_filename(
+      home, ".local", "share", "icons", "hicolor", "256x256", "apps", nullptr);
+  g_mkdir_with_parents(icon_dir, 0755);
+  g_autofree gchar* icon_dst =
+      g_build_filename(icon_dir, APPLICATION_ID ".png", nullptr);
+
+  g_autofree gchar* icon_bytes = nullptr;
+  gsize icon_len = 0;
+  if (g_file_get_contents(icon_path, &icon_bytes, &icon_len, nullptr)) {
+    g_file_set_contents(icon_dst, icon_bytes, static_cast<gssize>(icon_len),
+                        nullptr);
+  }
+
+  g_autofree gchar* apps_dir =
+      g_build_filename(home, ".local", "share", "applications", nullptr);
+  g_mkdir_with_parents(apps_dir, 0755);
+  g_autofree gchar* desktop_path =
+      g_build_filename(apps_dir, APPLICATION_ID ".desktop", nullptr);
+  g_autofree gchar* desktop = g_strdup_printf(
+      "[Desktop Entry]\n"
+      "Type=Application\n"
+      "Name=morixterm\n"
+      "Comment=SSH / RDP client and file transfer\n"
+      "Exec=\"%s\"\n"
+      "Icon=%s\n"
+      "Terminal=false\n"
+      "Categories=Network;RemoteAccess;\n"
+      "StartupWMClass=%s\n"
+      "StartupNotify=true\n"
+      "NoDisplay=false\n",
+      exe_path, APPLICATION_ID, APPLICATION_ID);
+  g_file_set_contents(desktop_path, desktop, -1, nullptr);
+
+  g_autoptr(GError) error = nullptr;
+  g_autofree gchar* update_desktop = g_strdup_printf(
+      "update-desktop-database \"%s\"", apps_dir);
+  g_spawn_command_line_async(update_desktop, &error);
+  g_autofree gchar* icon_theme_dir =
+      g_build_filename(home, ".local", "share", "icons", "hicolor", nullptr);
+  g_autofree gchar* update_icons = g_strdup_printf(
+      "gtk-update-icon-cache -f -t \"%s\"", icon_theme_dir);
+  g_spawn_command_line_async(update_icons, &error);
+}
+
 static void apply_window_icon(GtkWindow* window) {
   g_autoptr(GError) link_error = nullptr;
   g_autofree gchar* exe = g_file_read_link("/proc/self/exe", &link_error);
@@ -21,12 +89,36 @@ static void apply_window_icon(GtkWindow* window) {
     return;
   }
   g_autofree gchar* dir = g_path_get_dirname(exe);
-  g_autofree gchar* icon_path = g_build_filename(
-      dir, "data", "flutter_assets", "assets", "logo.png", nullptr);
-  if (!g_file_test(icon_path, G_FILE_TEST_IS_REGULAR)) {
+
+  const gchar* relatives[] = {
+      "morixterm.png",
+      "data/flutter_assets/assets/app_icon.png",
+      "data/flutter_assets/assets/logo.png",
+      "data/flutter_assets/assets/morixtrem-mark.png",
+      nullptr,
+  };
+
+  GdkPixbuf* pixbuf = nullptr;
+  g_autofree gchar* used_path = nullptr;
+  for (int i = 0; relatives[i] != nullptr; ++i) {
+    g_autofree gchar* candidate =
+        g_build_filename(dir, relatives[i], nullptr);
+    if (load_icon_pixbuf(candidate, &pixbuf)) {
+      used_path = g_steal_pointer(&candidate);
+      break;
+    }
+  }
+  if (pixbuf == nullptr) {
     return;
   }
-  gtk_window_set_icon_from_file(window, icon_path, nullptr);
+
+  gtk_window_set_default_icon(pixbuf);
+  gtk_window_set_icon(window, pixbuf);
+  g_object_unref(pixbuf);
+
+  if (used_path != nullptr) {
+    install_user_desktop_entry(exe, used_path);
+  }
 }
 
 // Called when first Flutter frame received.
