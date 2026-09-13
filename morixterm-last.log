@@ -1,46 +1,5 @@
 
-===== SSH testde localhost:2222 user=test @ 2026-09-13T22:43:26.996321 =====
-[2026-09-13T22:43:28.063944] SSH debug: SSHTransport._sendKexDHInit
-exInit
-e
-pherType(aes256-gcm@openssh.com)
-
-[2026-09-13T22:43:28.146163] SSH debug: SSHTransport._handleMessageNewKeys
-t
-, 58, 49, 112, 115, 120, 51, 87, 77, 50, 85, 90, 119, 84, 77, 88, 83, 57, 43, 118, 100, 55, 76, 76, 100, 109, 117, 113, 65, 112, 56, 85, 66, 82, 122, 50, 51, 48, 75, 48, 49, 83, 116, 111, 119]
-[2026-09-13T22:43:28.180370] SSH debug: SSHClient._authWithPassword
-Method.password
-[2026-09-13T22:43:28.208742] SSH debug: SSHTransport._consumeEncryptedPacket
-[2026-09-13T22:43:28.231378] SSH debug: SSHTransport._consumeEncryptedPacket
-[2026-09-13T22:43:28.238613] SSH debug: SSHChannel._handleRequestSuccessMessage
-[2026-09-13T22:43:28.305710] SSH debug: SSHTransport._consumeEncryptedPacket
-
-[2026-09-[2026-09-13T22:43:28.306087] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
-[2026-09-13T22:43:28.364427] SSH debug: SSHTransport._consumeEncryptedPac[2026-09-13T22:43:28.365579] SSH debug: SSHChannel._handleDataMessage: len=57
-[2026-09-13T22:43:28.458109] SSH debug: SSHChannel._sendWindowAdjustIfN[2026-09-13T22:43:28.458329] SSH debug: SSHChannel._sendWindowAdjustIfNeeded
-[2026-09-13T22:43:28.479332] SSH debug: SSHChannel._sendWindowAdjustIf[2026-09-13T22:43:28.479755] SSH debug: SSHTransport._consumeEncryptedPacket
-
-[2026-09-13T22:43:28.531646] SSH debug: SSHChannel._handleWindowAdjustMessage[2026-09-13T22:43:28.540405] SSH debug: SSHChannel._handleRequestSuccessMessage
-[2026-09-13T22:43:28.910846] SSH debug: SSHChannel._handleRequest: exit-status
-[2026-09-13T22:43:28.928473] SSH debug: SSHChannel._sendWindowAdjustI[2026-09-[2026-09-13T22:43:28.944652] SSH debug: SSHTransport._consumeEncryptedPacket
-s
-2097152
-[2026-09-13T22:43:30.940548] SSH debug: SSHTransport._processPackets
-essMessa[2026-09-1[2026-09-13T22:43:30.940844] SSH debug: SSHTransport._consumeEncryptedPacket
-s
-[2026-09-13T22:43:32.931945] SSH debug: SSHTransport._consumeEncryptedPacket
-[2026-09-13T22:43:32.978484] SSH debug: SSHTransport._processPackets
-fNeeded
-
-e
-097152
-[2026-09-13T22:43:32.979626] SSH debug: SSHChannel._sendCloseIfNeeded
-Packet
-s
-[2026-09-13T22:43:34.950741] SSH debug: SSHTransport._processPackets
-essMessage
-097152
-[2026-09-13T22:43:34.953293] SSH debug: SSHChannel._sendEOFIfNeeded
-IfNeeded
-
-
+===== SSH modat linux 194.147.142.132:2514 user=regulator @ 2026-09-13T23:17:23.566787 =====
+[2026-09-13T23:17:24.905784] SSH socket connected, keys=0
+[2026-09-13T23:17:25.826492] SSH host key ssh-ed25519 [83, 72, 65, 50, 53, 54, 58, 47, 78, 101, 113, 51, 68, 43, 50, 122, 56, 54, 112, 100, 90, 65, 100, 77, 107, 80, 109, 104, 120, 81, 77, 77, 87, 105, 68, 87, 115, 75, 105, 112, 119, 104, 76, 120, 55, 118, 52, 72, 112, 85]
+[2026-09-13T23:17:27.635333] SSH authenticated, starting shell

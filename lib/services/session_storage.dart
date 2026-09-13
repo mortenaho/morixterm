@@ -33,7 +33,7 @@ class SessionStorage {
 
   Future<bool> loadSystemMonitorEnabled() async {
     final preferences = await SharedPreferences.getInstance();
-    return preferences.getBool(_monitorKey) ?? true;
+    return preferences.getBool(_monitorKey) ?? false;
   }
 
   Future<void> saveSystemMonitorEnabled(bool enabled) async {

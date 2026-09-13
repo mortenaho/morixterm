@@ -53,6 +53,8 @@ class SshSessionService {
   bool _stopping = false;
   String _oscCarry = '';
   String? _shellCwd;
+  DateTime _lastShellActivity = DateTime.fromMillisecondsSinceEpoch(0);
+  var _statsBusy = false;
 
   Stream<ConnectionSnapshot> get changes => _out.stream;
   Stream<String> get cwdChanges => _cwdOut.stream;
@@ -60,6 +62,13 @@ class SshSessionService {
   Terminal? get terminal => _terminal;
   String? get shellCwd => _shellCwd;
   bool get canTransfer => _client != null && _snapshot.phase == ConnectionPhase.connected;
+
+  void _noteShellActivity() {
+    _lastShellActivity = DateTime.now();
+  }
+
+  bool get _shellRecentlyActive =>
+      DateTime.now().difference(_lastShellActivity) < const Duration(seconds: 2);
 
   Future<void> connect(SshConnectionRequest request) async {
     final endpoint = parseEndpoint(request.host, request.port);
@@ -73,7 +82,7 @@ class SshSessionService {
     await disconnect();
     _stopping = false;
     _request = request;
-    _terminal = Terminal(maxLines: 5000);
+    _terminal = Terminal(maxLines: 2500);
     await AppLog.startAttempt('SSH ${request.title} ${endpoint.host}:${endpoint.port} user=${request.username.trim()}');
     _emit(ConnectionSnapshot(
       phase: ConnectionPhase.connecting,
@@ -123,7 +132,12 @@ class SshSessionService {
         ),
       );
       _shell = shell;
-      terminal.onOutput = (data) => shell.write(Uint8List.fromList(utf8.encode(data)));
+      terminal.onOutput = (data) {
+        _noteShellActivity();
+        final shell = _shell;
+        if (shell == null) return;
+        shell.write(Uint8List.fromList(utf8.encode(data)));
+      };
       terminal.onResize = shell.resizeTerminal;
       _stdoutSub = shell.stdout.listen(_writeToTerminal);
       _stderrSub = shell.stderr.listen(_writeToTerminal);
@@ -567,16 +581,26 @@ __morixtrem_cwd 2>/dev/null || true
   }
 
   Future<RemoteSystemStats> fetchSystemStats() async {
+    // Skip while the user is actively typing/receiving shell data — exec on
+    // the shared SSH client otherwise stalls interactive input.
+    if (_statsBusy || _shellRecentlyActive) {
+      throw SshException('Monitor deferred while shell is active');
+    }
     final client = _requireClient('monitor');
-    // Lightweight remote snapshot — one round-trip, no interactive shell use.
-    const command = r'''
+    _statsBusy = true;
+    try {
+      // Lightweight remote snapshot — one round-trip, no interactive shell use.
+      const command = r'''
 awk '/^cpu /{idle=$5+$6; total=$2+$3+$4+$5+$6+$7+$8+$9+$10+$11; print "CPU",total-idle,total}' /proc/stat
 awk '/MemTotal:/{t=$2} /MemAvailable:/{a=$2} /MemFree:/{f=$2} END{avail=(a>0?a:f); print "MEM",t+0,avail+0}' /proc/meminfo
 df -Pk / 2>/dev/null | awk 'NR==2{gsub(/%/,"",$5); print "DISK",$2+0,$3+0,$5+0,$6}'
 ''';
-    final result = await client.runWithResult(command);
-    final text = utf8.decode(result.stdout, allowMalformed: true);
-    return _parseSystemStats(text);
+      final result = await client.runWithResult(command);
+      final text = utf8.decode(result.stdout, allowMalformed: true);
+      return _parseSystemStats(text);
+    } finally {
+      _statsBusy = false;
+    }
   }
 
   static RemoteSystemStats _parseSystemStats(String text) {
@@ -649,7 +673,14 @@ df -Pk / 2>/dev/null | awk 'NR==2{gsub(/%/,"",$5); print "DISK",$2+0,$3+0,$5+0,$
   }
 
   void _writeToTerminal(Uint8List data) {
+    _noteShellActivity();
     final text = utf8.decode(data, allowMalformed: true);
+    if (text.isEmpty) return;
+    // Fast path: no OSC cwd sequences in this chunk.
+    if (_oscCarry.isEmpty && !text.contains('\x1b]777;cwd;')) {
+      _terminal?.write(text);
+      return;
+    }
     final filtered = _consumeOscCwd(_oscCarry + text);
     if (filtered.isNotEmpty) {
       _terminal?.write(filtered);

@@ -32,7 +32,7 @@ class _SshTerminalPaneState extends State<SshTerminalPane> {
   final SessionStorage _storage = SessionStorage();
   var _fontSize = 13.0;
   var _themeMode = _TerminalThemeMode.morixterm;
-  var _monitorEnabled = true;
+  var _monitorEnabled = false;
   TerminalStyle? _cachedStyle;
   double? _cachedFontSize;
 
@@ -504,7 +504,7 @@ class _SystemMonitorHostState extends State<_SystemMonitorHost> {
     _timer?.cancel();
     unawaited(_poll());
     _timer = Timer.periodic(
-      const Duration(seconds: 5),
+      const Duration(seconds: 8),
       (_) => unawaited(_poll()),
     );
   }
@@ -523,8 +523,13 @@ class _SystemMonitorHostState extends State<_SystemMonitorHost> {
       });
     } catch (error) {
       if (!mounted) return;
+      final message = '$error';
+      // Quietly skip "deferred while typing" — keep last good stats.
+      if (message.contains('deferred') || message.contains('Monitor deferred')) {
+        return;
+      }
       setState(() {
-        _error = '$error';
+        _error = message;
         _loading = false;
       });
     } finally {

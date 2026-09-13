@@ -14,23 +14,19 @@ void main() {
     expect(banner, contains('__  __'));
     expect(banner, contains('v0.1.0-build.42'));
     expect(banner, contains('alice'));
-    expect(banner, contains('@'));
     expect(banner, contains('example.com'));
     expect(banner, contains('2222'));
     expect(banner, contains('LIVE'));
     expect(banner, contains('channel open'));
     expect(banner, contains('Connect · Manage · Explore'));
+    expect(banner, contains('user'));
     expect(banner, contains('host'));
-    expect(banner, contains('when'));
-    expect(banner, contains('tools'));
-    expect(banner, contains('keys'));
-    expect(banner, contains('shell'));
-    expect(banner, contains('upload'));
-    expect(banner, contains('monitor'));
-    expect(banner, contains('Ready'));
+    expect(banner, contains('port'));
+    expect(banner, contains('time'));
+    expect(banner, contains('SSH-2'));
+    expect(banner, isNot(contains('tools')));
     expect(banner, contains('\x1b['));
     expect(banner, contains('\r\n'));
-    // No wide Unicode block art that breaks terminal cells.
     expect(banner, isNot(contains('█')));
     expect(banner, isNot(contains('╗')));
   });

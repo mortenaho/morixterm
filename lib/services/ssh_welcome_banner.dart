@@ -19,9 +19,7 @@ String sshWelcomeBanner({
   const g5 = '\x1b[38;5;69m';
 
   const green = '\x1b[38;5;82m';
-  const greenSoft = '\x1b[38;5;72m';
-  const gold = '\x1b[38;5;220m';
-  const amber = '\x1b[38;5;178m';
+  const greenDim = '\x1b[38;5;65m';
   const white = '\x1b[38;5;255m';
   const soft = '\x1b[38;5;252m';
   const muted = '\x1b[38;5;245m';
@@ -29,7 +27,7 @@ String sshWelcomeBanner({
   const border = '\x1b[38;5;60m';
   const label = '\x1b[38;5;110m';
   const ice = '\x1b[38;5;117m';
-  const panel = '\x1b[38;5;66m';
+  const card = '\x1b[38;5;67m';
 
   const width = 74;
 
@@ -42,12 +40,6 @@ String sshWelcomeBanner({
 
   String empty() => row('');
 
-  String section(String title) {
-    final mark = '-- $title ';
-    final dash = (width - 4 - mark.length).clamp(2, width);
-    return row('  $faint$mark${'-' * dash}$reset');
-  }
-
   String padRight(String text, int cols) {
     final n = cols - strip(text).length;
     return n > 0 ? '$text${' ' * n}' : text;
@@ -59,11 +51,12 @@ String sshWelcomeBanner({
     return '${text.substring(0, max - 1)}.';
   }
 
-  String panelRow(String content) {
-    final innerWidth = width - 4; // between outer | |
-    final body = '$panel|$reset$content';
-    final pad = (innerWidth - 1 - strip(body).length).clamp(0, innerWidth);
-    return row('  $body${' ' * pad}$panel|$reset');
+  /// Inner card line: `| content |` padded to outer width.
+  String cardRow(String content) {
+    const side = 2; // "  " before left |
+    const inner = width - side - 2; // between the two card | chars
+    final pad = (inner - strip(content).length).clamp(0, inner);
+    return row('  $card|$reset$content${' ' * pad}$card|$reset');
   }
 
   final now = DateTime.now().toLocal();
@@ -74,10 +67,9 @@ String sshWelcomeBanner({
       '${now.hour.toString().padLeft(2, '0')}:'
       '${now.minute.toString().padLeft(2, '0')}';
 
-  final userShort = truncate(username, 18);
-  final hostShort = truncate(host, 30);
-  final endpoint =
-      '$green$bold$userShort$reset$white@$g3$hostShort$reset$muted:$ice$port$reset';
+  final userShort = truncate(username, 22);
+  final hostShort = truncate(host, 36);
+  final portText = '$port';
 
   // Standard FIGlet-style wordmark — spells MORIXTERM (I, not T).
   final logo = <String>[
@@ -87,6 +79,16 @@ String sshWelcomeBanner({
     row('  $g4| |  | || |_| ||  _ <  | |  /  \\   | |  | |___ |  _ < | |  | |$reset'),
     row('  $g5|_|  |_| \\___/ |_| \\_\\|___|/_/\\_\\  |_|  |_____||_| \\_\\|_|  |_|$reset'),
   ];
+
+  const leftCol = 40;
+  final userCell = padRight(
+    '  $label user $reset $green$bold$userShort$reset',
+    leftCol,
+  );
+  final hostCell = padRight(
+    '  $label host $reset $g3$hostShort$reset',
+    leftCol,
+  );
 
   final lines = <String>[
     '$border+${'=' * width}+$reset',
@@ -99,46 +101,22 @@ String sshWelcomeBanner({
       '            $ice$version$reset',
     ),
     empty(),
-    section('session'),
-    empty(),
-    row(
-      '  $green$bold*$reset  $white$bold LIVE$reset'
-      '   $greenSoft channel open$reset'
-      '                   $muted SSH-2 encrypted$reset',
+    row('  $card+${'=' * (width - 4)}+$reset'),
+    cardRow(
+      '  $greenDim[$reset$white$bold LIVE $reset$greenDim]$reset'
+      '  $soft SSH channel open$reset'
+      '          $muted SSH-2  ·  encrypted$reset',
     ),
-    empty(),
-    row('  $panel+${'-' * (width - 4)}+$reset'),
-    panelRow('  $label host $reset $endpoint'),
-    panelRow('  $label when $reset $muted$stamp$reset'),
-    row('  $panel+${'-' * (width - 4)}+$reset'),
-    empty(),
-    section('workspace'),
-    empty(),
-    row(
-      '${padRight('  $g3$bold tools$reset', 36)}'
-      '$gold$bold keys$reset',
+    cardRow('  $faint${'-' * (width - 8)}$reset'),
+    cardRow(
+      '$userCell'
+      '$label port$reset  $ice$bold$portText$reset',
     ),
-    empty(),
-    row(
-      '${padRight('  $green+$reset shell    $green+$reset tabs    $green+$reset files', 36)}'
-      '$amber>$reset Ctrl+Shift+C   $muted copy$reset',
+    cardRow(
+      '$hostCell'
+      '$label time$reset  $muted$stamp$reset',
     ),
-    row(
-      '${padRight('  $green+$reset upload   $green+$reset monitor $green+$reset theme', 36)}'
-      '$amber>$reset Ctrl+Shift+V   $muted paste$reset',
-    ),
-    empty(),
-    section('tip'),
-    empty(),
-    row(
-      '  $gold*$reset  $soft Heart icon$reset$dim toggles CPU / RAM / Disk monitor.$reset',
-    ),
-    row(
-      '     $dim Files sidebar can follow your shell working directory.$reset',
-    ),
-    row(
-      '     $white$bold Ready$reset$dim — type a command to get started.$reset',
-    ),
+    row('  $card+${'=' * (width - 4)}+$reset'),
     empty(),
     '$border+${'=' * width}+$reset',
   ];

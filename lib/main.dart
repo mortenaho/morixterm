@@ -552,22 +552,23 @@ class _WorkspacePageState extends State<WorkspacePage> {
     live.subscription = changes?.listen((snapshot) {
       if (!mounted) return;
       setState(() {});
-      if (live.isSsh &&
-          snapshot.phase == ConnectionPhase.connected &&
-          !live.filesSidebarOpen) {
-        unawaited(_openSshFilesSidebar(live));
-      }
+      // Do not auto-open the files sidebar — SFTP listing on the same
+      // SSH client competes with the interactive shell and lags typing.
     });
     live.cwdSubscription?.cancel();
     Timer? cwdDebounce;
     live.cwdSubscription = live.ssh?.cwdChanges.listen((path) {
-      if (!mounted || !live.followTerminalCwd) return;
+      if (!mounted || !live.followTerminalCwd || !live.filesSidebarOpen) {
+        return;
+      }
       if (path == live.explorerPath) return;
       live.explorerPath = path;
       live.selectedPaths.clear();
       cwdDebounce?.cancel();
-      cwdDebounce = Timer(const Duration(milliseconds: 350), () {
-        if (!mounted || !live.followTerminalCwd) return;
+      cwdDebounce = Timer(const Duration(milliseconds: 500), () {
+        if (!mounted || !live.followTerminalCwd || !live.filesSidebarOpen) {
+          return;
+        }
         setState(() {});
         unawaited(_refreshFiles(live));
       });
