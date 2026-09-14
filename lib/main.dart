@@ -16,6 +16,8 @@ import 'models/upload_job.dart';
 import 'services/app_log.dart';
 import 'services/app_lock.dart';
 import 'services/app_version.dart';
+import 'services/credential_vault.dart';
+import 'services/known_hosts.dart';
 import 'services/rdp_session_service.dart';
 import 'services/session_storage.dart';
 import 'services/ssh_session_service.dart';
@@ -229,6 +231,11 @@ class _AppRootState extends State<_AppRoot> {
 
   Future<void> _bootstrap() async {
     final enabled = await _appLock.isEnabled();
+    if (!enabled) {
+      try {
+        await CredentialVault.instance.unlockWithDeviceKey();
+      } catch (_) {}
+    }
     if (!mounted) return;
     setState(() {
       _lockEnabled = enabled;
@@ -238,6 +245,13 @@ class _AppRootState extends State<_AppRoot> {
 
   Future<void> _refreshLockState({bool unlockIfDisabled = true}) async {
     final enabled = await _appLock.isEnabled();
+    if (!enabled) {
+      try {
+        if (!CredentialVault.instance.isUnlocked) {
+          await CredentialVault.instance.unlockWithDeviceKey();
+        }
+      } catch (_) {}
+    }
     if (!mounted) return;
     setState(() {
       _lockEnabled = enabled;
@@ -249,6 +263,7 @@ class _AppRootState extends State<_AppRoot> {
 
   void _lockNow() {
     if (_lockEnabled != true) return;
+    CredentialVault.instance.lock();
     setState(() => _unlocked = false);
   }
 
@@ -303,6 +318,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
   Set<String> folders = <String>{};
   final Set<String> collapsedFolders = <String>{};
   List<SavedSession> sessions = const [];
+  Timer? _idleTimer;
+  var _idleMinutes = AppLock.defaultIdleMinutes;
 
   LiveSession? get focused {
     for (final item in openSessions) {
@@ -323,14 +340,31 @@ class _WorkspacePageState extends State<WorkspacePage> {
   void initState() {
     super.initState();
     _loadSessions();
+    _bootstrapIdleLock();
   }
 
   @override
   void dispose() {
+    _idleTimer?.cancel();
     for (final live in openSessions) {
       live.dispose();
     }
     super.dispose();
+  }
+
+  Future<void> _bootstrapIdleLock() async {
+    _idleMinutes = await widget.appLock.idleLockMinutes();
+    _bumpIdleTimer();
+  }
+
+  void _bumpIdleTimer() {
+    _idleTimer?.cancel();
+    if (!widget.lockEnabled || widget.onLockNow == null || _idleMinutes <= 0) {
+      return;
+    }
+    _idleTimer = Timer(Duration(minutes: _idleMinutes), () {
+      widget.onLockNow?.call();
+    });
   }
 
   Future<void> _loadSessions() async {
@@ -620,11 +654,22 @@ class _WorkspacePageState extends State<WorkspacePage> {
 
   LiveSession _createLive(SavedSession bookmark) {
     final live = LiveSession(id: 'live-${++_liveSeq}', bookmark: bookmark);
+    live.setHostKeyPrompt(_promptHostKey);
     _watchLive(live);
     openSessions.add(live);
     focusedId = live.id;
     pane = _Pane.session;
     return live;
+  }
+
+  Future<bool> _promptHostKey(HostKeyCheck check) async {
+    if (!mounted) return false;
+    final accepted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _HostKeyDialog(check: check),
+    );
+    return accepted == true;
   }
 
   String _sessionKey(SavedSession session) =>

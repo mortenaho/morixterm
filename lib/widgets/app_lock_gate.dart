@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/app_lock.dart';
 import '../services/app_version.dart';
+import '../services/credential_vault.dart';
 
 /// Full-screen gate shown when the app password is enabled.
 class AppUnlockScreen extends StatefulWidget {
@@ -65,6 +66,8 @@ class _AppUnlockScreenState extends State<AppUnlockScreen> {
         );
         return;
       }
+      await CredentialVault.instance.unlockWithAppPassword(password);
+      if (!mounted) return;
       widget.onUnlocked();
     } catch (error) {
       if (!mounted) return;
@@ -195,6 +198,7 @@ class _AppSecurityDialogState extends State<_AppSecurityDialog> {
   var _enabled = false;
   var _busy = false;
   var _obscure = true;
+  var _idleMinutes = AppLock.defaultIdleMinutes;
   String? _error;
   String? _info;
 
@@ -218,9 +222,11 @@ class _AppSecurityDialogState extends State<_AppSecurityDialog> {
 
   Future<void> _load() async {
     final enabled = await widget.appLock.isEnabled();
+    final idle = await widget.appLock.idleLockMinutes();
     if (!mounted) return;
     setState(() {
       _enabled = enabled;
+      _idleMinutes = idle;
       _loading = false;
     });
   }
@@ -365,6 +371,34 @@ class _AppSecurityDialogState extends State<_AppSecurityDialog> {
                   ),
                   const SizedBox(height: 12),
                   _field(controller: _confirm, label: 'Confirm password'),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text('Auto-lock after idle',
+                            style: TextStyle(color: Colors.white70)),
+                      ),
+                      DropdownButton<int>(
+                        value: _idleMinutes,
+                        dropdownColor: const Color(0xFF2A2A2A),
+                        items: const [
+                          DropdownMenuItem(value: 0, child: Text('Off')),
+                          DropdownMenuItem(value: 5, child: Text('5 min')),
+                          DropdownMenuItem(value: 10, child: Text('10 min')),
+                          DropdownMenuItem(value: 15, child: Text('15 min')),
+                          DropdownMenuItem(value: 30, child: Text('30 min')),
+                          DropdownMenuItem(value: 60, child: Text('60 min')),
+                        ],
+                        onChanged: _busy
+                            ? null
+                            : (value) async {
+                                if (value == null) return;
+                                setState(() => _idleMinutes = value);
+                                await widget.appLock.setIdleLockMinutes(value);
+                              },
+                      ),
+                    ],
+                  ),
                   if (_error != null) ...[
                     const SizedBox(height: 12),
                     Text(_error!,

@@ -85,11 +85,13 @@ class SavedSession {
         'port': port,
         'username': username,
         'protocol': protocol.name,
-        'password': password,
+        // Passwords live in CredentialVault — never persist plaintext here.
+        'password': '',
         'folder': folder,
         'tabColor': tabColor,
       };
 
+  /// Temporary decode helper: may still contain legacy plaintext passwords.
   factory SavedSession.fromJson(Map<String, dynamic> json) {
     final protocolName = json['protocol'] as String?;
     return SavedSession(

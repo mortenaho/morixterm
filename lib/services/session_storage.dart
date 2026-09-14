@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/saved_session.dart';
+import 'credential_vault.dart';
 
 class SessionStorage {
   static const _key = 'saved_rdp_sessions';
@@ -12,22 +13,56 @@ class SessionStorage {
   Future<List<SavedSession>> load() async {
     final preferences = await SharedPreferences.getInstance();
     final raw = preferences.getStringList(_key) ?? <String>[];
-    return raw.map((item) => SavedSession.fromJson(jsonDecode(item) as Map<String, dynamic>)).toList();
+    final sessions = raw
+        .map((item) =>
+            SavedSession.fromJson(jsonDecode(item) as Map<String, dynamic>))
+        .toList();
+
+    final vault = CredentialVault.instance;
+    final legacy = sessions.where((s) => s.password.isNotEmpty).toList();
+    if (legacy.isNotEmpty) {
+      await vault.migratePlaintextPasswords(legacy);
+      // Rewrite bookmarks without plaintext passwords.
+      await saveAll(sessions.map((s) => s.copyWith(password: '')).toList());
+    }
+
+    final hydrated = <SavedSession>[];
+    for (final session in sessions) {
+      final secret = await vault.read(session);
+      hydrated.add(session.copyWith(password: secret ?? ''));
+    }
+    return hydrated;
   }
 
   Future<void> saveAll(List<SavedSession> sessions) async {
     final preferences = await SharedPreferences.getInstance();
-    await preferences.setStringList(_key, sessions.map((session) => jsonEncode(session.toJson())).toList());
+    final vault = CredentialVault.instance;
+    for (final session in sessions) {
+      await vault.write(session, session.password);
+    }
+    await preferences.setStringList(
+      _key,
+      sessions
+          .map((session) => jsonEncode(session.copyWith(password: '').toJson()))
+          .toList(),
+    );
   }
 
   Future<List<String>> loadFolders() async {
     final preferences = await SharedPreferences.getInstance();
-    return (preferences.getStringList(_foldersKey) ?? <String>[]).where((item) => item.trim().isNotEmpty).toList();
+    return (preferences.getStringList(_foldersKey) ?? <String>[])
+        .where((item) => item.trim().isNotEmpty)
+        .toList();
   }
 
   Future<void> saveFolders(Iterable<String> folders) async {
     final preferences = await SharedPreferences.getInstance();
-    final values = folders.map((item) => item.trim()).where((item) => item.isNotEmpty).toSet().toList()..sort();
+    final values = folders
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
     await preferences.setStringList(_foldersKey, values);
   }
 

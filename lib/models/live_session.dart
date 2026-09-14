@@ -61,6 +61,10 @@ class LiveSession {
     ));
   }
 
+  void setHostKeyPrompt(HostKeyPrompt? prompt) {
+    ssh?.hostKeyPrompt = prompt;
+  }
+
   Future<void> disconnect() async {
     upload?.cancel();
     upload = null;

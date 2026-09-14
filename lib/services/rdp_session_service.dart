@@ -308,7 +308,7 @@ class RdpSessionService {
       '/v:${endpoint.host}:${endpoint.port}',
       '/u:${request.username.trim()}',
       '/p:${request.password}',
-      '/cert:ignore',
+      '/cert:tofu',
       '+clipboard',
       '+dynamic-resolution',
       '/network:auto',

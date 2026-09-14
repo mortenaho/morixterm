@@ -28,7 +28,7 @@
 
   function isLinuxAsset(name) {
     const n = name.toLowerCase();
-    return n.endsWith(".deb") || n.endsWith(".AppImage") || n.includes("linux");
+    return n.endsWith(".deb") || n.endsWith(".appimage") || n.includes("linux");
   }
 
   function pickAsset(assets, predicate) {
@@ -37,7 +37,7 @@
 
   function enableButton(button, metaEl, asset, fallbackMeta) {
     if (!asset) {
-      metaEl.textContent = "موجود نیست";
+      metaEl.textContent = "Unavailable";
       return;
     }
     button.href = asset.browser_download_url;
@@ -49,8 +49,8 @@
 
   function setError(message) {
     versionLine.textContent = message;
-    metaWindows.textContent = "خطا";
-    metaLinux.textContent = "خطا";
+    metaWindows.textContent = "Error";
+    metaLinux.textContent = "Error";
   }
 
   async function loadLatestRelease() {
@@ -67,8 +67,8 @@
       throw new Error("no releases");
     }
 
-    // Releases API returns newest first and includes prereleases.
-    const latest = releases.find((r) => Array.isArray(r.assets) && r.assets.length > 0) || releases[0];
+    const latest =
+      releases.find((r) => Array.isArray(r.assets) && r.assets.length > 0) || releases[0];
     const assets = latest.assets || [];
     const windows = pickAsset(assets, isWindowsAsset);
     const linux = pickAsset(assets, isLinuxAsset);
@@ -78,23 +78,25 @@
 
     const label = latest.name || latest.tag_name || "latest";
     const published = latest.published_at
-      ? new Date(latest.published_at).toLocaleDateString("fa-IR")
+      ? new Date(latest.published_at).toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+        })
       : "";
 
     versionLine.innerHTML = published
-      ? `آخرین نسخه: <strong dir="ltr">${label}</strong> · ${published}`
-      : `آخرین نسخه: <strong dir="ltr">${label}</strong>`;
+      ? `Latest release: <strong>${label}</strong> · ${published}`
+      : `Latest release: <strong>${label}</strong>`;
   }
 
   loadLatestRelease().catch(() => {
-    // Fallback: GitHub "latest" redirect works for non-prerelease tags;
-    // for this repo we still point users to the releases page.
     btnWindows.href = `https://github.com/${REPO}/releases`;
     btnLinux.href = `https://github.com/${REPO}/releases`;
     btnWindows.removeAttribute("aria-disabled");
     btnLinux.removeAttribute("aria-disabled");
-    metaWindows.textContent = "از صفحهٔ Releases";
-    metaLinux.textContent = "از صفحهٔ Releases";
-    setError("دریافت خودکار نسخه ممکن نشد. از صفحهٔ Releases دانلود کنید.");
+    metaWindows.textContent = "Open Releases";
+    metaLinux.textContent = "Open Releases";
+    setError("Could not fetch the latest build. Download from GitHub Releases.");
   });
 })();

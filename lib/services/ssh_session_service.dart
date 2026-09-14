@@ -13,8 +13,11 @@ import '../models/saved_session.dart';
 import '../models/upload_job.dart';
 import 'app_log.dart';
 import 'app_version.dart';
+import 'known_hosts.dart';
 import 'scp_transfer.dart';
 import 'ssh_welcome_banner.dart';
+
+typedef HostKeyPrompt = Future<bool> Function(HostKeyCheck check);
 
 class SshConnectionRequest {
   const SshConnectionRequest({
@@ -55,6 +58,7 @@ class SshSessionService {
   String? _shellCwd;
   DateTime _lastShellActivity = DateTime.fromMillisecondsSinceEpoch(0);
   var _statsBusy = false;
+  HostKeyPrompt? hostKeyPrompt;
 
   Stream<ConnectionSnapshot> get changes => _out.stream;
   Stream<String> get cwdChanges => _cwdOut.stream;
@@ -69,6 +73,35 @@ class SshSessionService {
 
   bool get _shellRecentlyActive =>
       DateTime.now().difference(_lastShellActivity) < const Duration(seconds: 2);
+
+  Future<bool> _verifyHostKey({
+    required String host,
+    required int port,
+    required String keyType,
+    required List<int> fingerprintBytes,
+    required bool allowPrompt,
+  }) async {
+    final fingerprint = utf8.decode(fingerprintBytes, allowMalformed: true).trim();
+    final check = await KnownHosts.instance.check(
+      host: host,
+      port: port,
+      keyType: keyType,
+      fingerprint: fingerprint,
+    );
+    await AppLog.line(
+        'SSH host key $keyType $fingerprint status=${check.status.name}');
+    if (check.status == HostKeyTrust.trusted) return true;
+    if (!allowPrompt || hostKeyPrompt == null) return false;
+    final accepted = await hostKeyPrompt!(check);
+    if (!accepted) return false;
+    await KnownHosts.instance.trust(
+      host: host,
+      port: port,
+      keyType: keyType,
+      fingerprint: fingerprint,
+    );
+    return true;
+  }
 
   Future<void> connect(SshConnectionRequest request) async {
     final endpoint = parseEndpoint(request.host, request.port);
@@ -109,10 +142,13 @@ class SshSessionService {
         onUserInfoRequest: password.isEmpty
             ? null
             : (info) => List<String>.filled(info.prompts.length, password),
-        onVerifyHostKey: (type, fingerprint) {
-          AppLog.line('SSH host key $type $fingerprint');
-          return true;
-        },
+        onVerifyHostKey: (type, fingerprint) => _verifyHostKey(
+          host: endpoint.host,
+          port: endpoint.port,
+          keyType: type,
+          fingerprintBytes: fingerprint,
+          allowPrompt: true,
+        ),
         // Do not use printDebug → AppLog here: dartssh2 emits often and
         // flushing disk logs on every packet makes typing feel laggy.
         keepAliveInterval: const Duration(seconds: 20),
@@ -362,7 +398,13 @@ class SshSessionService {
       onUserInfoRequest: password.isEmpty
           ? null
           : (info) => List<String>.filled(info.prompts.length, password),
-      onVerifyHostKey: (type, fingerprint) => true,
+      onVerifyHostKey: (type, fingerprint) => _verifyHostKey(
+        host: endpoint.host,
+        port: endpoint.port,
+        keyType: type,
+        fingerprintBytes: fingerprint,
+        allowPrompt: false,
+      ),
       keepAliveInterval: const Duration(seconds: 15),
       handshakeTimeout: const Duration(seconds: 15),
       authTimeout: const Duration(seconds: 15),
@@ -500,10 +542,7 @@ class SshSessionService {
         [
           '-O',
           '-q',
-          '-o',
-          'StrictHostKeyChecking=no',
-          '-o',
-          'UserKnownHostsFile=/dev/null',
+          ...KnownHosts.instance.scpStrictHostKeyArgs(),
           '-o',
           'ConnectTimeout=20',
           '-o',
@@ -716,10 +755,7 @@ class SshSessionService {
         [
           '-O',
           '-q',
-          '-o',
-          'StrictHostKeyChecking=no',
-          '-o',
-          'UserKnownHostsFile=/dev/null',
+          ...KnownHosts.instance.scpStrictHostKeyArgs(),
           '-o',
           'ConnectTimeout=20',
           '-o',
