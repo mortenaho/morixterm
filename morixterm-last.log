@@ -4,3 +4,5 @@
 85]
 [2026-09-13T23:27:06.999459] SSH authenticated, starting shell
 [2026-09-13T23:27:07.801665] SSH authenticated, starting shell
+[2026-09-14T19:28:46.770080] Trusted SSH host key unit-test.example:22 (ssh-ed25519)
+[2026-09-14T19:29:32.859563] Trusted SSH host key unit-test.example:22 (ssh-ed25519)

@@ -37,9 +37,11 @@ class SessionStorage {
   Future<void> saveAll(List<SavedSession> sessions) async {
     final preferences = await SharedPreferences.getInstance();
     final vault = CredentialVault.instance;
-    for (final session in sessions) {
-      await vault.write(session, session.password);
-    }
+    await vault.replaceAll({
+      for (final session in sessions)
+        if (session.password.isNotEmpty)
+          CredentialVault.keyFor(session): session.password,
+    });
     await preferences.setStringList(
       _key,
       sessions

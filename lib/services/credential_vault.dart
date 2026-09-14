@@ -125,6 +125,12 @@ class CredentialVault {
     await _persistVault();
   }
 
+  Future<void> replaceAll(Map<String, String> secrets) async {
+    await _ensureUnlocked();
+    _secrets = Map<String, String>.from(secrets);
+    await _persistVault();
+  }
+
   Future<void> remove(SavedSession session) async {
     await _ensureUnlocked();
     _secrets.remove(keyFor(session));

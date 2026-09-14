@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'app_log.dart';
-import 'secure_crypto.dart';
 
 class HostKeyRecord {
   const HostKeyRecord({

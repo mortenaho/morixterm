@@ -1471,6 +1471,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
   Future<void> _showSecurity() async {
     final result = await showAppSecurityDialog(context, appLock: widget.appLock);
     await widget.onLockSettingsChanged?.call();
+    _idleMinutes = await widget.appLock.idleLockMinutes();
+    _bumpIdleTimer();
     if (!mounted || result == null) return;
     showMessage(
       result ? 'App password updated' : 'App password turned off',
@@ -1489,7 +1491,17 @@ class _WorkspacePageState extends State<WorkspacePage> {
             : pane == _Pane.files
                 ? 1
                 : 2 + (focusedIndex < 0 ? 0 : focusedIndex);
-    return Scaffold(
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (_) => _bumpIdleTimer(),
+      onPointerSignal: (_) => _bumpIdleTimer(),
+      child: Focus(
+        autofocus: true,
+        onKeyEvent: (_, __) {
+          _bumpIdleTimer();
+          return KeyEventResult.ignored;
+        },
+        child: Scaffold(
       backgroundColor: Moba.bg,
       body: Column(
         children: [
@@ -1624,6 +1636,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
           ),
           _StatusBar(snapshot: current, live: hasLiveSession),
         ],
+      ),
+    ),
       ),
     );
   }
@@ -4240,6 +4254,96 @@ class _RenameDialogState extends State<_RenameDialog> {
             onPressed: () => Navigator.pop(context, controller.text.trim()),
             child: const Text('Rename')),
       ],
+    );
+  }
+}
+
+class _HostKeyDialog extends StatelessWidget {
+  const _HostKeyDialog({required this.check});
+
+  final HostKeyCheck check;
+
+  @override
+  Widget build(BuildContext context) {
+    final mismatch = check.status == HostKeyTrust.mismatch;
+    final title = mismatch ? 'Host key changed' : 'Unknown SSH host';
+    final accent = mismatch ? const Color(0xFFE06C75) : Moba.ssh;
+    return AlertDialog(
+      backgroundColor: const Color(0xFF1E1E1E),
+      title: Row(
+        children: [
+          Icon(
+            mismatch ? Icons.warning_amber_rounded : Icons.verified_user_outlined,
+            color: accent,
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Text(title)),
+        ],
+      ),
+      content: SizedBox(
+        width: 440,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              mismatch
+                  ? 'The host key for ${check.host}:${check.port} does not match the saved key. This can mean the server was reinstalled — or a man-in-the-middle attack.'
+                  : 'This is the first connection to ${check.host}:${check.port}. Verify the fingerprint with your server admin before trusting it.',
+              style: const TextStyle(color: Colors.white70, height: 1.45),
+            ),
+            const SizedBox(height: 14),
+            _kv('Key type', check.keyType),
+            const SizedBox(height: 8),
+            _kv('Fingerprint', check.fingerprint, mono: true),
+            if (check.previous != null) ...[
+              const SizedBox(height: 8),
+              _kv('Previous', check.previous!.fingerprint, mono: true),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Reject'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: mismatch ? const Color(0xFFE06C75) : Moba.green,
+          ),
+          onPressed: () => Navigator.pop(context, true),
+          child: Text(mismatch ? 'Replace & continue' : 'Trust & continue'),
+        ),
+      ],
+    );
+  }
+
+  Widget _kv(String label, String value, {bool mono = false}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF252525),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF3A3A3A)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: const TextStyle(fontSize: 11, color: Colors.white54)),
+          const SizedBox(height: 4),
+          SelectableText(
+            value,
+            style: TextStyle(
+              fontFamily: mono ? 'monospace' : null,
+              fontSize: mono ? 12 : 13,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
