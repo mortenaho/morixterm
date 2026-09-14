@@ -17,7 +17,7 @@ class ScpException implements Exception {
 
 class ScpCancelledException implements Exception {
   @override
-  String toString() => 'Upload cancelled';
+  String toString() => 'Transfer cancelled';
 }
 
 class ScpTransfer {
@@ -241,6 +241,128 @@ class ScpTransfer {
     }
   }
 
+  static Future<void> download({
+    required SSHClient client,
+    required String remotePath,
+    required String localPath,
+    void Function(int received, int total)? onProgress,
+    bool Function()? isCancelled,
+  }) async {
+    if (remotePath.trim().isEmpty) {
+      throw ScpException('Invalid remote path');
+    }
+    final session = await client.execute('scp -f ${_shellQuote(remotePath)}');
+    final wire = _ScpWire(session);
+    IOSink? sink;
+    var created = false;
+
+    void checkCancel() {
+      if (isCancelled?.call() == true) {
+        throw ScpCancelledException();
+      }
+    }
+
+    try {
+      checkCancel();
+      // Kick off sink-mode transfer.
+      session.write(Uint8List.fromList(const [0]));
+      await session.flush();
+
+      String header;
+      while (true) {
+        checkCancel();
+        header = await wire.readLine(timeout: const Duration(seconds: 30));
+        if (header.isEmpty) continue;
+        if (header.startsWith('T')) {
+          // Optional timestamp stanza from older scp; acknowledge and continue.
+          session.write(Uint8List.fromList(const [0]));
+          await session.flush();
+          continue;
+        }
+        break;
+      }
+
+      if (!header.startsWith('C') || header.length < 3) {
+        throw ScpException(
+            wire.stderr.isEmpty ? 'Unexpected SCP response' : wire.stderr.toString().trim());
+      }
+
+      final parts = header.substring(1).trim().split(RegExp(r'\s+'));
+      if (parts.length < 3) {
+        throw ScpException('Malformed SCP file header');
+      }
+      final size = int.tryParse(parts[1]);
+      if (size == null || size < 0) {
+        throw ScpException('Invalid SCP file size');
+      }
+      final ioTimeout = Duration(
+        seconds: (60 + (size ~/ (8 * 1024 * 1024)) * 60).clamp(90, 3600),
+      );
+
+      session.write(Uint8List.fromList(const [0]));
+      await session.flush();
+
+      final out = File(localPath);
+      await out.parent.create(recursive: true);
+      sink = out.openWrite();
+      created = true;
+      onProgress?.call(0, size);
+
+      var received = 0;
+      while (received < size) {
+        checkCancel();
+        final chunk = await wire.readChunk(
+          (size - received).clamp(1, 256 * 1024),
+          timeout: ioTimeout,
+        );
+        if (chunk.isEmpty) {
+          throw ScpException('SCP connection closed before file completed');
+        }
+        sink.add(chunk);
+        received += chunk.length;
+        onProgress?.call(received.clamp(0, size), size);
+      }
+      await sink.flush();
+      await sink.close();
+      sink = null;
+
+      await wire.expectOk(timeout: ioTimeout);
+      session.write(Uint8List.fromList(const [0]));
+      await session.flush();
+      await session.stdin.close();
+      await session.done.timeout(ioTimeout);
+      if ((session.exitCode ?? 0) != 0) {
+        throw ScpException(wire.stderr.isEmpty
+            ? 'SCP download failed'
+            : wire.stderr.toString().trim());
+      }
+      onProgress?.call(size, size);
+    } on ScpCancelledException {
+      try {
+        session.close();
+      } catch (_) {}
+      rethrow;
+    } on TimeoutException {
+      throw ScpException('SCP download timed out');
+    } on ScpException {
+      rethrow;
+    } catch (error) {
+      final detail =
+          wire.stderr.isEmpty ? '$error' : wire.stderr.toString().trim();
+      throw ScpException(detail);
+    } finally {
+      try {
+        await sink?.close();
+      } catch (_) {}
+      if (created && isCancelled?.call() == true) {
+        try {
+          await File(localPath).delete();
+        } catch (_) {}
+      }
+      await wire.dispose();
+    }
+  }
+
   static String _shellQuote(String value) => "'${value.replaceAll("'", r"'\''")}'";
 
   static bool _safeName(String name) {
@@ -282,6 +404,46 @@ class _ScpWire {
     }
     final text = message.toString().trim();
     throw ScpException(text.isEmpty ? 'SCP server returned an error' : text);
+  }
+
+  Future<String> readLine({Duration timeout = const Duration(seconds: 30)}) async {
+    final message = StringBuffer();
+    while (true) {
+      final next = await _readByte().timeout(timeout);
+      if (next == 10) break;
+      if (next == 0 && message.isEmpty) {
+        // Status OK with no payload — treat as empty control.
+        continue;
+      }
+      if (next == 1 || next == 2) {
+        final err = StringBuffer();
+        while (true) {
+          final b = await _readByte().timeout(timeout);
+          if (b == 10) break;
+          err.writeCharCode(b);
+        }
+        final text = err.toString().trim();
+        throw ScpException(text.isEmpty ? 'SCP server returned an error' : text);
+      }
+      message.writeCharCode(next);
+    }
+    return message.toString();
+  }
+
+  Future<Uint8List> readChunk(
+    int maxBytes, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    if (maxBytes <= 0) return Uint8List(0);
+    while (_buffer.isEmpty && !_closed) {
+      _waiter = Completer<void>();
+      await _waiter!.future.timeout(timeout);
+    }
+    if (_buffer.isEmpty) return Uint8List(0);
+    final take = maxBytes < _buffer.length ? maxBytes : _buffer.length;
+    final chunk = Uint8List.fromList(_buffer.sublist(0, take));
+    _buffer.removeRange(0, take);
+    return chunk;
   }
 
   Future<int> _readByte() async {

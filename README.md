@@ -2,6 +2,8 @@
 
 اپلیکیشن دسکتاپی مبتنی بر Flutter/Dart برای مدیریت اتصال‌های SSH/RDP، ترمینال تعاملی و مرور فایل‌های ریموت.
 
+سایت دانلود: [`website/`](website/) — دکمه‌های ویندوز و لینوکس همیشه آخرین release گیت‌هاب را می‌گیرند. پس از publish با workflow `Deploy website`: [mortenaho.github.io/morixtrem](https://mortenaho.github.io/morixtrem/)
+
 ![morixterm screenshot](assets/morixterm-screenshot.png)
 
 ## وضعیت فعلی

@@ -791,6 +791,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
       onCut: () => _copySelection(cut: true, target: live),
       onPaste: () => _pasteClipboard(target: live),
       onUpload: () => _pickAndUpload(target: live),
+      onDownload: () => _pickAndDownload(target: live),
       onNewFolder: () => _createRemoteFolder(target: live),
       onRename: () => _renameSelection(target: live),
       onPermissions: () => _chmodSelection(target: live),
@@ -1066,7 +1067,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
       return;
     }
     if (live.upload != null) {
-      showMessage('Another upload is already in progress', kind: ToastKind.warning);
+      showMessage('Another transfer is already in progress',
+          kind: ToastKind.warning);
       return;
     }
     final file = await openFile(confirmButtonText: 'Select');
@@ -1125,6 +1127,190 @@ class _WorkspacePageState extends State<WorkspacePage> {
         live.explorerBusy = false;
         live.upload = null;
       }
+    }
+  }
+
+  Future<void> _pickAndDownload({LiveSession? target}) async {
+    final live = target ?? focused;
+    await AppLog.line(
+        'download click ssh=$sshConnected rdp=$rdpConnected path=${live?.explorerPath}');
+    if (live == null || !live.connected) {
+      showMessage('Connect an SSH or RDP session first', kind: ToastKind.warning);
+      return;
+    }
+    if (live.upload != null) {
+      showMessage('Another transfer is already in progress',
+          kind: ToastKind.warning);
+      return;
+    }
+    final files = live.explorerEntries
+        .where((entry) =>
+            live.selectedPaths.contains(entry.path) && !entry.isDirectory)
+        .toList();
+    if (files.isEmpty) {
+      showMessage('Select one or more files to download',
+          kind: ToastKind.warning);
+      return;
+    }
+
+    if (files.length == 1) {
+      final entry = files.first;
+      final location = await getSaveLocation(
+        suggestedName: entry.name,
+        confirmButtonText: 'Save',
+      );
+      if (location == null) return;
+      await _downloadOne(
+        live,
+        remotePath: entry.path,
+        localPath: location.path,
+        fileName: entry.name,
+      );
+      return;
+    }
+
+    final directoryPath = await getDirectoryPath(confirmButtonText: 'Save here');
+    if (directoryPath == null) return;
+    var done = 0;
+    for (final entry in files) {
+      if (!live.connected) break;
+      final localPath =
+          '$directoryPath${Platform.pathSeparator}${entry.name}';
+      final ok = await _downloadOne(
+        live,
+        remotePath: entry.path,
+        localPath: localPath,
+        fileName: entry.name,
+        quietSuccess: true,
+      );
+      if (!ok) break;
+      done += 1;
+    }
+    if (mounted && done > 0) {
+      showMessage(
+        done == files.length
+            ? 'Downloaded $done files'
+            : 'Downloaded $done of ${files.length} files',
+        kind: done == files.length ? ToastKind.success : ToastKind.warning,
+      );
+    }
+  }
+
+  Future<bool> _downloadOne(
+    LiveSession live, {
+    required String remotePath,
+    required String localPath,
+    required String fileName,
+    bool quietSuccess = false,
+  }) async {
+    if (live.upload != null) {
+      showMessage('Another transfer is already in progress',
+          kind: ToastKind.warning);
+      return false;
+    }
+    final job = UploadJob(
+      fileName: fileName,
+      totalBytes: 0,
+      direction: TransferDirection.download,
+    );
+    var lastUi = DateTime.fromMillisecondsSinceEpoch(0);
+    void bumpUi({bool force = false}) {
+      final now = DateTime.now();
+      if (!force &&
+          now.difference(lastUi).inMilliseconds < 80 &&
+          job.totalBytes > 0 &&
+          job.sentBytes < job.totalBytes) {
+        return;
+      }
+      lastUi = now;
+      if (mounted) setState(() {});
+    }
+
+    setState(() {
+      live.explorerBusy = true;
+      live.upload = job;
+    });
+    try {
+      if (live.isSsh) {
+        final ticker = Timer.periodic(const Duration(milliseconds: 120), (_) {
+          if (live.upload == job) bumpUi();
+        });
+        try {
+          await live.ssh!.downloadFile(remotePath, localPath, job: job);
+        } finally {
+          ticker.cancel();
+        }
+      } else {
+        await _downloadSharedWithProgress(remotePath, localPath, job, bumpUi);
+      }
+      if (mounted && !quietSuccess) {
+        showMessage('Downloaded $fileName', kind: ToastKind.success);
+      }
+      return true;
+    } on UploadCancelledException {
+      if (mounted) showMessage('Download cancelled', kind: ToastKind.warning);
+      return false;
+    } catch (error) {
+      await AppLog.line('download failed: $error');
+      if (mounted) showMessage('Download failed: $error', kind: ToastKind.error);
+      return false;
+    } finally {
+      if (mounted) {
+        setState(() {
+          live.explorerBusy = false;
+          live.upload = null;
+        });
+      } else {
+        live.explorerBusy = false;
+        live.upload = null;
+      }
+    }
+  }
+
+  Future<void> _downloadSharedWithProgress(
+    String sourcePath,
+    String localPath,
+    UploadJob job,
+    void Function({bool force}) bumpUi,
+  ) async {
+    final source = File(sourcePath);
+    if (!await source.exists()) {
+      throw Exception('Shared file not found');
+    }
+    final total = await source.length();
+    job.setTotal(total);
+    await File(localPath).parent.create(recursive: true);
+    final sink = File(localPath).openWrite();
+    var received = 0;
+    try {
+      job.bindCancel(() {
+        unawaited(sink.close());
+      });
+      job.throwIfCancelled();
+      await for (final chunk in source.openRead()) {
+        job.throwIfCancelled();
+        sink.add(chunk);
+        received += chunk.length;
+        job.report(received);
+        bumpUi();
+      }
+      await sink.flush();
+      await sink.close();
+      job.report(job.totalBytes);
+      bumpUi(force: true);
+    } catch (error) {
+      try {
+        await sink.close();
+      } catch (_) {}
+      try {
+        await File(localPath).delete();
+      } catch (_) {}
+      if (job.cancelling || error is UploadCancelledException) {
+        throw UploadCancelledException();
+      }
+      rethrow;
+    } finally {
+      job.clearCancel();
     }
   }
 
@@ -2257,6 +2443,7 @@ class _FilesPane extends StatelessWidget {
     required this.onCut,
     required this.onPaste,
     required this.onUpload,
+    required this.onDownload,
     required this.onNewFolder,
     required this.onRename,
     required this.onPermissions,
@@ -2289,6 +2476,7 @@ class _FilesPane extends StatelessWidget {
   final VoidCallback onCut;
   final VoidCallback onPaste;
   final VoidCallback onUpload;
+  final VoidCallback onDownload;
   final VoidCallback onNewFolder;
   final VoidCallback onRename;
   final VoidCallback onPermissions;
@@ -2303,6 +2491,8 @@ class _FilesPane extends StatelessWidget {
     final hasSelection = selectedPaths.isNotEmpty;
     final canRename = selectedPaths.length == 1;
     final canPaste = clipboard != null && clipboard!.paths.isNotEmpty;
+    final canDownload = entries.any(
+        (entry) => selectedPaths.contains(entry.path) && !entry.isDirectory);
     return Shortcuts(
       shortcuts: {
         LogicalKeySet(LogicalKeyboardKey.control, LogicalKeyboardKey.keyC):
@@ -2409,6 +2599,11 @@ class _FilesPane extends StatelessWidget {
                                   tooltip: 'Upload',
                                   onTap: ready ? onUpload : null),
                               _ExplorerIconBtn(
+                                  icon: Icons.download,
+                                  tooltip: 'Download',
+                                  onTap:
+                                      ready && canDownload ? onDownload : null),
+                              _ExplorerIconBtn(
                                   icon: Icons.create_new_folder_outlined,
                                   tooltip: 'New folder',
                                   onTap: ready ? onNewFolder : null),
@@ -2450,6 +2645,11 @@ class _FilesPane extends StatelessWidget {
                                 icon: Icons.upload,
                                 label: 'Upload',
                                 onTap: ready ? onUpload : null),
+                            _ExplorerBtn(
+                                icon: Icons.download,
+                                label: 'Download',
+                                onTap:
+                                    ready && canDownload ? onDownload : null),
                             _ExplorerBtn(
                                 icon: Icons.create_new_folder_outlined,
                                 label: 'New folder',
@@ -2571,6 +2771,9 @@ class _FilesPane extends StatelessWidget {
                                         onCopy: onCopy,
                                         onCut: onCut,
                                         onPaste: canPaste ? onPaste : null,
+                                        onDownload: entry.isDirectory
+                                            ? null
+                                            : onDownload,
                                         onNewFolder: onNewFolder,
                                         onRename: canRename || selected
                                             ? onRename
@@ -2722,8 +2925,12 @@ class _UploadProgressCard extends StatelessWidget {
                       color: Moba.green.withValues(alpha: 0.18),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Icon(Icons.upload_rounded,
-                        size: 18, color: Moba.green),
+                    child: Icon(
+                        job.isDownload
+                            ? Icons.download_rounded
+                            : Icons.upload_rounded,
+                        size: 18,
+                        color: Moba.green),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -2731,7 +2938,11 @@ class _UploadProgressCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          cancelling ? 'Cancelling upload…' : 'Uploading',
+                          cancelling
+                              ? (job.isDownload
+                                  ? 'Cancelling download…'
+                                  : 'Cancelling upload…')
+                              : (job.isDownload ? 'Downloading' : 'Uploading'),
                           style: const TextStyle(
                             fontSize: 12,
                             color: Colors.white54,
@@ -3145,6 +3356,7 @@ class _FileRow extends StatelessWidget {
     this.onCopy,
     this.onCut,
     this.onPaste,
+    this.onDownload,
     this.onNewFolder,
     this.onRename,
     this.onPermissions,
@@ -3162,6 +3374,7 @@ class _FileRow extends StatelessWidget {
   final VoidCallback? onCopy;
   final VoidCallback? onCut;
   final VoidCallback? onPaste;
+  final VoidCallback? onDownload;
   final VoidCallback? onNewFolder;
   final VoidCallback? onRename;
   final VoidCallback? onPermissions;
@@ -3185,6 +3398,7 @@ class _FileRow extends StatelessWidget {
     final hasMenu = onCopy != null ||
         onCut != null ||
         onPaste != null ||
+        onDownload != null ||
         onNewFolder != null ||
         onRename != null ||
         onPermissions != null ||
@@ -3204,12 +3418,21 @@ class _FileRow extends StatelessWidget {
                     label: 'Open',
                     icon: Icons.folder_open_outlined,
                   ),
+                if (onDownload != null)
+                  _CtxItem(
+                    value: 'download',
+                    label: 'Download',
+                    icon: Icons.download_outlined,
+                    dividerBefore: directory && onDoubleTap != null,
+                  ),
                 if (onNewFolder != null)
                   _CtxItem(
                     value: 'mkdir',
                     label: 'New folder',
                     icon: Icons.create_new_folder_outlined,
-                    dividerBefore: directory && onDoubleTap != null,
+                    dividerBefore: onDownload == null &&
+                        directory &&
+                        onDoubleTap != null,
                   ),
                 if (onCopy != null)
                   const _CtxItem(
@@ -3268,6 +3491,8 @@ class _FileRow extends StatelessWidget {
               switch (action) {
                 case 'open':
                   onDoubleTap?.call();
+                case 'download':
+                  onDownload?.call();
                 case 'mkdir':
                   onNewFolder?.call();
                 case 'copy':
@@ -4071,7 +4296,6 @@ class _PermissionsDialogState extends State<_PermissionsDialog> {
 
   Widget _bit(
     String label,
-    String hint,
     bool value,
     ValueChanged<bool> onChanged,
   ) {
@@ -4081,8 +4305,9 @@ class _PermissionsDialogState extends State<_PermissionsDialog> {
         mouseCursor: WidgetStateMouseCursor.clickable,
         borderRadius: BorderRadius.circular(6),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
-          padding: const EdgeInsets.symmetric(vertical: 5),
+          duration: const Duration(milliseconds: 120),
+          height: 32,
+          alignment: Alignment.center,
           decoration: BoxDecoration(
             color: value ? Moba.green.withValues(alpha: 0.22) : const Color(0xFF2A2A2A),
             borderRadius: BorderRadius.circular(6),
@@ -4090,24 +4315,13 @@ class _PermissionsDialogState extends State<_PermissionsDialog> {
               color: value ? Moba.green : const Color(0xFF444444),
             ),
           ),
-          child: Column(
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: value ? Moba.green : Colors.white54,
-                ),
-              ),
-              Text(
-                hint,
-                style: TextStyle(
-                  fontSize: 9,
-                  color: value ? Colors.white70 : Colors.white38,
-                ),
-              ),
-            ],
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: value ? Moba.green : Colors.white54,
+            ),
           ),
         ),
       ),
@@ -4122,36 +4336,33 @@ class _PermissionsDialogState extends State<_PermissionsDialog> {
     required bool x,
     required void Function(bool, bool, bool) onChanged,
   }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFF252525),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF3A3A3A)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Icon(icon, size: 13, color: Moba.green),
-              const SizedBox(width: 6),
-              Text(title,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w600, fontSize: 11)),
-            ],
+          SizedBox(
+            width: 72,
+            child: Row(
+              children: [
+                Icon(icon, size: 14, color: Moba.green),
+                const SizedBox(width: 5),
+                Flexible(
+                  child: Text(
+                    title,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 5),
-          Row(
-            children: [
-              _bit('R', 'Read', r, (v) => onChanged(v, w, x)),
-              const SizedBox(width: 5),
-              _bit('W', 'Write', w, (v) => onChanged(r, v, x)),
-              const SizedBox(width: 5),
-              _bit('X', 'Exec', x, (v) => onChanged(r, w, v)),
-            ],
-          ),
+          const SizedBox(width: 6),
+          _bit('R', r, (v) => onChanged(v, w, x)),
+          const SizedBox(width: 5),
+          _bit('W', w, (v) => onChanged(r, v, x)),
+          const SizedBox(width: 5),
+          _bit('X', x, (v) => onChanged(r, w, v)),
         ],
       ),
     );
@@ -4165,7 +4376,8 @@ class _PermissionsDialogState extends State<_PermissionsDialog> {
         mouseCursor: WidgetStateMouseCursor.clickable,
         borderRadius: BorderRadius.circular(6),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 5),
+          height: 40,
+          alignment: Alignment.center,
           decoration: BoxDecoration(
             color: selected ? Moba.green.withValues(alpha: 0.2) : Moba.toolbar,
             borderRadius: BorderRadius.circular(6),
@@ -4174,6 +4386,7 @@ class _PermissionsDialogState extends State<_PermissionsDialog> {
             ),
           ),
           child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(mode,
                   style: TextStyle(
@@ -4205,14 +4418,12 @@ class _PermissionsDialogState extends State<_PermissionsDialog> {
     final title = widget.itemCount == 1
         ? 'Permissions'
         : 'Permissions · ${widget.itemCount} items';
-    final maxBodyHeight = MediaQuery.sizeOf(context).height * 0.72;
 
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       child: Container(
         width: 360,
-        constraints: BoxConstraints(maxHeight: maxBodyHeight),
         decoration: BoxDecoration(
           color: Moba.panel,
           borderRadius: BorderRadius.circular(12),
@@ -4279,125 +4490,146 @@ class _PermissionsDialogState extends State<_PermissionsDialog> {
                 ],
               ),
             ),
-            Flexible(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text('Quick presets',
-                        style: TextStyle(fontSize: 10, color: Colors.white54)),
-                    const SizedBox(height: 5),
-                    Row(
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      _preset('755', 'Folders'),
+                      const SizedBox(width: 5),
+                      _preset('644', 'Files'),
+                      const SizedBox(width: 5),
+                      _preset('700', 'Private'),
+                      const SizedBox(width: 5),
+                      _preset('777', 'Open'),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: modeController,
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 10),
+                      labelText: 'Octal mode',
+                      hintText: '755',
+                      filled: true,
+                      fillColor: const Color(0xFF252525),
+                      prefixIcon: const Icon(Icons.tag, size: 16),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: Color(0xFF444444)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: Color(0xFF444444)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: Moba.green),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  const Padding(
+                    padding: EdgeInsets.only(left: 78, bottom: 4),
+                    child: Row(
                       children: [
-                        _preset('755', 'Folders'),
-                        const SizedBox(width: 5),
-                        _preset('644', 'Files'),
-                        const SizedBox(width: 5),
-                        _preset('700', 'Private'),
-                        const SizedBox(width: 5),
-                        _preset('777', 'Open'),
+                        Expanded(
+                            child: Text('R',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    fontSize: 10, color: Colors.white38))),
+                        SizedBox(width: 5),
+                        Expanded(
+                            child: Text('W',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    fontSize: 10, color: Colors.white38))),
+                        SizedBox(width: 5),
+                        Expanded(
+                            child: Text('X',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    fontSize: 10, color: Colors.white38))),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: modeController,
-                      style: const TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                  ),
+                  _roleRow(
+                    title: 'Owner',
+                    icon: Icons.person_outline,
+                    r: ownerR,
+                    w: ownerW,
+                    x: ownerX,
+                    onChanged: (r, w, x) {
+                      ownerR = r;
+                      ownerW = w;
+                      ownerX = x;
+                      _fromChecks();
+                    },
+                  ),
+                  _roleRow(
+                    title: 'Group',
+                    icon: Icons.groups_outlined,
+                    r: groupR,
+                    w: groupW,
+                    x: groupX,
+                    onChanged: (r, w, x) {
+                      groupR = r;
+                      groupW = w;
+                      groupX = x;
+                      _fromChecks();
+                    },
+                  ),
+                  _roleRow(
+                    title: 'Others',
+                    icon: Icons.public_outlined,
+                    r: otherR,
+                    w: otherW,
+                    x: otherX,
+                    onChanged: (r, w, x) {
+                      otherR = r;
+                      otherW = w;
+                      otherX = x;
+                      _fromChecks();
+                    },
+                  ),
+                  const SizedBox(height: 2),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF252525),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF3A3A3A)),
+                    ),
+                    child: SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      visualDensity: VisualDensity.compact,
+                      value: recursive,
+                      activeThumbColor: Moba.green,
+                      onChanged: (value) => setState(() => recursive = value),
+                      secondary: Icon(
+                        Icons.account_tree_outlined,
+                        size: 18,
+                        color: recursive ? Moba.green : Colors.white54,
                       ),
-                      decoration: InputDecoration(
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 10),
-                        labelText: 'Octal mode',
-                        hintText: '755',
-                        filled: true,
-                        fillColor: const Color(0xFF252525),
-                        prefixIcon: const Icon(Icons.tag, size: 16),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: const BorderSide(color: Color(0xFF444444)),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: const BorderSide(color: Color(0xFF444444)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: const BorderSide(color: Moba.green),
-                        ),
-                      ),
+                      title: const Text('Recursive',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 12)),
+                      subtitle: const Text('Apply to subfolders/files',
+                          style: TextStyle(fontSize: 10)),
                     ),
-                    const SizedBox(height: 8),
-                    _roleRow(
-                      title: 'Owner',
-                      icon: Icons.person_outline,
-                      r: ownerR,
-                      w: ownerW,
-                      x: ownerX,
-                      onChanged: (r, w, x) {
-                        ownerR = r;
-                        ownerW = w;
-                        ownerX = x;
-                        _fromChecks();
-                      },
-                    ),
-                    _roleRow(
-                      title: 'Group',
-                      icon: Icons.groups_outlined,
-                      r: groupR,
-                      w: groupW,
-                      x: groupX,
-                      onChanged: (r, w, x) {
-                        groupR = r;
-                        groupW = w;
-                        groupX = x;
-                        _fromChecks();
-                      },
-                    ),
-                    _roleRow(
-                      title: 'Others',
-                      icon: Icons.public_outlined,
-                      r: otherR,
-                      w: otherW,
-                      x: otherX,
-                      onChanged: (r, w, x) {
-                        otherR = r;
-                        otherW = w;
-                        otherX = x;
-                        _fromChecks();
-                      },
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF252525),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: const Color(0xFF3A3A3A)),
-                      ),
-                      child: SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        dense: true,
-                        visualDensity: VisualDensity.compact,
-                        value: recursive,
-                        activeThumbColor: Moba.green,
-                        onChanged: (value) => setState(() => recursive = value),
-                        secondary: Icon(
-                          Icons.account_tree_outlined,
-                          size: 18,
-                          color: recursive ? Moba.green : Colors.white54,
-                        ),
-                        title: const Text('Recursive',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w600, fontSize: 12)),
-                        subtitle: const Text('chmod -R on subfolders/files',
-                            style: TextStyle(fontSize: 10)),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
             Container(

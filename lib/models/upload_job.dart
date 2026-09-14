@@ -1,22 +1,28 @@
 class UploadCancelledException implements Exception {
   @override
-  String toString() => 'Upload cancelled';
+  String toString() => 'Transfer cancelled';
 }
 
-/// Tracks a single file upload for UI progress and cancellation.
+enum TransferDirection { upload, download }
+
+/// Tracks a single file transfer for UI progress and cancellation.
 class UploadJob {
   UploadJob({
     required this.fileName,
     required this.totalBytes,
+    this.direction = TransferDirection.upload,
   });
 
   final String fileName;
-  final int totalBytes;
+  final TransferDirection direction;
+  int totalBytes;
   int sentBytes = 0;
   bool indeterminate = false;
   bool cancelling = false;
   DateTime startedAt = DateTime.now();
   void Function()? _onCancel;
+
+  bool get isDownload => direction == TransferDirection.download;
 
   double? get fraction {
     if (indeterminate || totalBytes <= 0) return null;
@@ -47,6 +53,13 @@ class UploadJob {
 
   void throwIfCancelled() {
     if (cancelling) throw UploadCancelledException();
+  }
+
+  void setTotal(int bytes) {
+    totalBytes = bytes < 0 ? 0 : bytes;
+    if (totalBytes > 0 && sentBytes > totalBytes) {
+      sentBytes = totalBytes;
+    }
   }
 
   void report(int sent, {bool? indeterminate}) {

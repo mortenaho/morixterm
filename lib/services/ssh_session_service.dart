@@ -142,14 +142,13 @@ class SshSessionService {
       _stdoutSub = shell.stdout.listen(_writeToTerminal);
       _stderrSub = shell.stderr.listen(_writeToTerminal);
       // Local welcome art (not sent to the remote shell).
-      terminal.write('\x1b[?25h\x1b[?12h'); // show cursor + blink
+      terminal.write('\x1b[?25h\x1b[?12l');
       terminal.write(sshWelcomeBanner(
         username: request.username.trim(),
         host: endpoint.host,
         port: endpoint.port,
         version: AppVersion.label,
       ));
-      unawaited(_enableSessionColors(shell));
       shell.done.then((_) {
         if (!_stopping && _snapshot.phase == ConnectionPhase.connected) {
           _emit(const ConnectionSnapshot(phase: ConnectionPhase.idle));
@@ -178,49 +177,6 @@ class SshSessionService {
       await _closeRemote();
       throw SshException(message);
     }
-  }
-
-  Future<void> _enableSessionColors(SSHSession shell) async {
-    // Apply styling only to this shell process; nothing is written to the
-    // remote user's profile. Echo is disabled so setup is not shown, then a
-    // fresh prompt is requested so the user can type immediately.
-    const script = r'''
-__morixtrem_cwd(){ printf '\033]777;cwd;%s\007' "$PWD"; }
-if [ -n "$BASH_VERSION" ]; then
-  PS1='\[\e[1;32m\]\u\[\e[0m\]@\[\e[1;34m\]\h\[\e[0m\]:\[\e[38;5;82m\]\w\[\e[0m\]\$ '
-  PROMPT_COMMAND="__morixtrem_cwd${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
-elif [ -n "$ZSH_VERSION" ]; then
-  PROMPT='%F{green}%B%n%b%f@%F{blue}%B%m%b%f:%F{green}%~%f %# '
-  precmd_functions+=(__morixtrem_cwd)
-fi
-alias ls='ls --color=auto' 2>/dev/null || true
-alias ll='ls -lah --color=auto' 2>/dev/null || true
-__morixtrem_cwd 2>/dev/null || true
-''';
-    final b64 = base64Encode(utf8.encode(script.trim()));
-    void write(String data) {
-      if (_stopping || !identical(_shell, shell)) return;
-      shell.write(Uint8List.fromList(utf8.encode(data)));
-    }
-
-    // Turn off TTY echo first (this single line may flash briefly).
-    write('stty -echo 2>/dev/null || true\n');
-    await Future<void>.delayed(const Duration(milliseconds: 40));
-    if (_stopping || !identical(_shell, shell)) return;
-
-    // Silent eval of the setup blob (Linux: base64 -d, macOS: base64 -D).
-    write(
-      'eval "\$(echo $b64 | base64 -d 2>/dev/null || echo $b64 | base64 -D 2>/dev/null)"\n',
-    );
-    await Future<void>.delayed(const Duration(milliseconds: 80));
-    if (_stopping || !identical(_shell, shell)) return;
-
-    // Restore echo and force a new prompt line ready for input.
-    write('stty echo 2>/dev/null || true\n');
-    await Future<void>.delayed(const Duration(milliseconds: 40));
-    if (_stopping || !identical(_shell, shell)) return;
-    write('\n');
-    _terminal?.write('\x1b[?25h\x1b[?12h');
   }
 
   Future<void> disconnect() async {
@@ -311,6 +267,80 @@ __morixtrem_cwd 2>/dev/null || true
     } finally {
       job?.clearCancel();
     }
+  }
+
+  Future<void> downloadFile(
+    String remotePath,
+    String localPath, {
+    UploadJob? job,
+  }) async {
+    _requireClient('download');
+    final name = remotePath.split('/').where((part) => part.isNotEmpty).last;
+    if (name.isEmpty) throw SshException('Invalid remote path');
+    await AppLog.line('SCP download $remotePath -> $localPath');
+    Object? lastError;
+    void report(int received, {bool indeterminate = false}) {
+      job?.report(received, indeterminate: indeterminate);
+    }
+
+    try {
+      job?.throwIfCancelled();
+      try {
+        await _downloadWithSftp(remotePath, localPath, job: job);
+      } catch (error) {
+        if (error is UploadCancelledException ||
+            error is ScpCancelledException) {
+          rethrow;
+        }
+        lastError = error;
+        await AppLog.line('SFTP download failed, trying system scp: $error');
+        job?.throwIfCancelled();
+        try {
+          await _downloadWithSystemScp(remotePath, localPath, job: job);
+        } catch (error2) {
+          if (error2 is UploadCancelledException ||
+              error2 is ScpCancelledException) {
+            rethrow;
+          }
+          lastError = error2;
+          await AppLog.line('system scp failed, dartscp fallback: $error2');
+          job?.throwIfCancelled();
+          await _downloadWithIsolatedClient(remotePath, localPath, job: job);
+        }
+      }
+      if (job != null && job.totalBytes > 0) {
+        report(job.totalBytes);
+      }
+      await AppLog.line('SCP download done $name');
+    } on UploadCancelledException {
+      await AppLog.line('SCP download cancelled $name');
+      await _deletePartialDownload(localPath);
+      rethrow;
+    } on ScpCancelledException {
+      await AppLog.line('SCP download cancelled $name');
+      await _deletePartialDownload(localPath);
+      throw UploadCancelledException();
+    } on ScpException catch (error) {
+      await AppLog.line('SCP download failed: ${error.message}');
+      await _deletePartialDownload(localPath);
+      throw SshException(error.message);
+    } catch (error) {
+      final message = error is SshException
+          ? error.message
+          : '${lastError ?? error}';
+      await AppLog.line('SCP download failed: $message');
+      await _deletePartialDownload(localPath);
+      throw SshException(message);
+    } finally {
+      job?.clearCancel();
+    }
+  }
+
+  Future<void> _deletePartialDownload(String localPath) async {
+    try {
+      final file = File(localPath);
+      if (await file.exists()) await file.delete();
+    } catch (_) {}
   }
 
   Future<SSHClient> _openTransferClient() async {
@@ -517,6 +547,224 @@ __morixtrem_cwd 2>/dev/null || true
         throw ScpException(
             err.isEmpty ? 'SCP upload failed (exit $exitCode)' : err);
       }
+      job?.report(size, indeterminate: false);
+    } finally {
+      job?.clearCancel();
+      try {
+        await work.delete(recursive: true);
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _downloadWithSftp(
+    String remotePath,
+    String localPath, {
+    UploadJob? job,
+  }) async {
+    final client = await _openTransferClient();
+    SftpClient? sftp;
+    IOSink? sink;
+    var created = false;
+    try {
+      job?.bindCancel(() {
+        unawaited(client.close());
+        unawaited(sink?.close());
+      });
+      job?.throwIfCancelled();
+      sftp = await client.sftp();
+      final remote = await sftp.open(
+        remotePath,
+        mode: SftpFileOpenMode.read,
+      );
+      try {
+        job?.throwIfCancelled();
+        final attrs = await remote.stat();
+        final size = attrs.size ?? 0;
+        if (size > 0) {
+          job?.setTotal(size);
+          job?.indeterminate = false;
+        } else {
+          job?.report(0, indeterminate: true);
+        }
+        final out = File(localPath);
+        await out.parent.create(recursive: true);
+        sink = out.openWrite();
+        created = true;
+        var received = 0;
+        await for (final chunk in remote.read(
+          length: size > 0 ? size : null,
+          onProgress: (bytesRead) {
+            if (size > 0) {
+              job?.report(bytesRead.clamp(0, size));
+            } else {
+              job?.report(bytesRead, indeterminate: true);
+            }
+          },
+        )) {
+          job?.throwIfCancelled();
+          sink.add(chunk);
+          received += chunk.length;
+          if (size <= 0) {
+            job?.report(received, indeterminate: true);
+          }
+        }
+        await sink.flush();
+        await sink.close();
+        sink = null;
+        if (size > 0) {
+          job?.report(size);
+        } else {
+          job?.setTotal(received);
+          job?.report(received, indeterminate: false);
+        }
+        if (job?.cancelling == true) {
+          throw UploadCancelledException();
+        }
+      } catch (error) {
+        if (job?.cancelling == true || error is UploadCancelledException) {
+          throw UploadCancelledException();
+        }
+        rethrow;
+      } finally {
+        await remote.close();
+      }
+    } finally {
+      job?.clearCancel();
+      try {
+        await sink?.close();
+      } catch (_) {}
+      if (created && job?.cancelling == true) {
+        await _deletePartialDownload(localPath);
+      }
+      try {
+        await sftp?.close();
+      } catch (_) {}
+      try {
+        await client.close();
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _downloadWithIsolatedClient(
+    String remotePath,
+    String localPath, {
+    UploadJob? job,
+  }) async {
+    final client = await _openTransferClient();
+    try {
+      job?.bindCancel(() {
+        try {
+          client.close();
+        } catch (_) {}
+      });
+      job?.throwIfCancelled();
+      await ScpTransfer.download(
+        client: client,
+        remotePath: remotePath,
+        localPath: localPath,
+        onProgress: (received, total) {
+          if (total > 0) {
+            job?.setTotal(total);
+            job?.report(received, indeterminate: false);
+          } else {
+            job?.report(received, indeterminate: true);
+          }
+        },
+        isCancelled: () => job?.cancelling == true,
+      );
+    } on ScpCancelledException {
+      throw UploadCancelledException();
+    } finally {
+      job?.clearCancel();
+      try {
+        await client.close();
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _downloadWithSystemScp(
+    String remotePath,
+    String localPath, {
+    UploadJob? job,
+  }) async {
+    final request = _request;
+    if (request == null) throw SshException('Connect to an SSH session first');
+    final endpoint = parseEndpoint(request.host, request.port);
+    final source = '${request.username.trim()}@${endpoint.host}:$remotePath';
+    final work = await Directory.systemTemp.createTemp('morixterm-scp-dl-');
+    final askpass = File('${work.path}/askpass');
+    await askpass.writeAsString(
+        '#!/bin/sh\nprintf %s "\$MORIXTERM_SSH_PASS"\n');
+    await Process.run('chmod', ['700', askpass.path]);
+    Process? process;
+    try {
+      final environment = Map<String, String>.from(Platform.environment);
+      if (request.password.isNotEmpty) {
+        environment['MORIXTERM_SSH_PASS'] = request.password;
+        environment['SSH_ASKPASS'] = askpass.path;
+        environment['SSH_ASKPASS_REQUIRE'] = 'force';
+        environment['DISPLAY'] = environment['DISPLAY'] ?? ':0';
+      }
+      final knownTotal = job?.totalBytes ?? 0;
+      final timeoutSec =
+          (60 + (knownTotal ~/ (8 * 1024 * 1024)) * 60).clamp(90, 3600);
+      job?.report(0, indeterminate: true);
+      job?.throwIfCancelled();
+      await File(localPath).parent.create(recursive: true);
+      process = await Process.start(
+        'scp',
+        [
+          '-O',
+          '-q',
+          '-o',
+          'StrictHostKeyChecking=no',
+          '-o',
+          'UserKnownHostsFile=/dev/null',
+          '-o',
+          'ConnectTimeout=20',
+          '-o',
+          'ServerAliveInterval=15',
+          '-o',
+          'ServerAliveCountMax=4',
+          '-o',
+          'PreferredAuthentications=${request.password.isEmpty ? 'publickey' : 'password,keyboard-interactive,publickey'}',
+          '-P',
+          '${endpoint.port}',
+          '--',
+          source,
+          localPath,
+        ],
+        environment: environment,
+      );
+      job?.bindCancel(() {
+        try {
+          process?.kill(ProcessSignal.sigterm);
+        } catch (_) {}
+      });
+      final stderrBuf = StringBuffer();
+      final stderrSub = process.stderr
+          .transform(utf8.decoder)
+          .listen((chunk) => stderrBuf.write(chunk));
+      final exitCode = await process.exitCode.timeout(
+        Duration(seconds: timeoutSec),
+        onTimeout: () {
+          try {
+            process?.kill(ProcessSignal.sigkill);
+          } catch (_) {}
+          throw ScpException('SCP download timed out');
+        },
+      );
+      await stderrSub.cancel();
+      if (job?.cancelling == true) {
+        throw UploadCancelledException();
+      }
+      if (exitCode != 0) {
+        final err = stderrBuf.toString().trim();
+        throw ScpException(
+            err.isEmpty ? 'SCP download failed (exit $exitCode)' : err);
+      }
+      final size = await File(localPath).length();
+      job?.setTotal(size);
       job?.report(size, indeterminate: false);
     } finally {
       job?.clearCancel();

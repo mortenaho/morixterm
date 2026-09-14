@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MoriXterm — ترمینال و مدیریت اتصال</title>
+  <meta name="description" content="کلاینت دسکتاپ برای SSH، RDP، ترمینال تعاملی و مرور فایل‌های ریموت." />
+  <meta property="og:title" content="MoriXterm" />
+  <meta property="og:description" content="Connect · Manage · Explore" />
+  <meta property="og:image" content="assets/morixterm-brand.png" />
+  <link rel="icon" type="image/png" href="assets/morixtrem-mark.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="atmosphere" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <a class="brand-mark" href="#top" aria-label="MoriXterm">
+      <img src="assets/morixtrem-mark.png" alt="" width="36" height="36" />
+      <span class="brand-word" lang="en" dir="ltr">Mori<span class="x">X</span>term</span>
+    </a>
+    <nav>
+      <a href="#download">دانلود</a>
+      <a href="https://github.com/mortenaho/morixtrem" rel="noopener" target="_blank">GitHub</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="hero-copy">
+        <img class="hero-logo" src="assets/morixterm-brand.png" alt="MoriXterm" width="280" height="280" />
+        <p class="eyebrow" lang="en" dir="ltr">Connect · Manage · Explore</p>
+        <h1>ترمینال و مدیریت اتصال، در یک پنجره</h1>
+        <p class="lede">
+          جلسهٔ SSH و RDP، شل تعاملی و مرور فایل ریموت — سبک، محلی، و آماده برای دسکتاپ.
+        </p>
+
+        <div id="download" class="cta-row">
+          <a class="btn btn-primary" id="btn-windows" href="#" aria-disabled="true">
+            <span class="btn-label">دانلود ویندوز</span>
+            <span class="btn-meta" id="meta-windows">در حال دریافت…</span>
+          </a>
+          <a class="btn btn-secondary" id="btn-linux" href="#" aria-disabled="true">
+            <span class="btn-label">دانلود لینوکس</span>
+            <span class="btn-meta" id="meta-linux">.deb · amd64</span>
+          </a>
+        </div>
+
+        <p class="version-line" id="version-line" aria-live="polite">
+          آخرین نسخه به‌صورت خودکار از GitHub دریافت می‌شود.
+        </p>
+      </div>
+
+      <figure class="hero-visual">
+        <img
+          src="assets/morixterm-screenshot.png"
+          alt="نمای برنامه MoriXterm با ترمینال SSH و مرورگر فایل ریموت"
+          width="1200"
+          height="720"
+        />
+      </figure>
+    </section>
+
+    <section class="features" aria-label="قابلیت‌ها">
+      <div class="feature">
+        <h2>جلسهٔ چندگانه</h2>
+        <p>SSH و RDP را در یک workspace نگه دارید و سریع بین آن‌ها جابه‌جا شوید.</p>
+      </div>
+      <div class="feature">
+        <h2>ترمینال واقعی</h2>
+        <p>شل تعاملی با تم، جستجو، کپی/پیست و ابزارهای روزمرهٔ ترمینال.</p>
+      </div>
+      <div class="feature">
+        <h2>فایل ریموت</h2>
+        <p>مرور مسیرها و انتقال فایل کنار همان جلسهٔ متصل — بدون ابزار جداگانه.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p lang="en" dir="ltr">© MoriXterm · <a href="https://github.com/mortenaho/morixtrem" rel="noopener" target="_blank">mortenaho/morixtrem</a></p>
+  </footer>
+
+  <script src="download.js"></script>
+</body>
+</html>
