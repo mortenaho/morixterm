@@ -320,6 +320,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
   final Set<String> collapsedFolders = <String>{};
   List<SavedSession> sessions = const [];
   Timer? _idleTimer;
+  var _toolsOpen = false;
   var _idleMinutes = AppLock.defaultIdleMinutes;
 
   LiveSession? get focused {
@@ -1469,11 +1470,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
     );
   }
 
-  Future<void> _showTools() async {
-    await showDialog<void>(
-      context: context,
-      builder: (context) => const _ToolsDialog(),
-    );
+  void _showTools() {
+    setState(() => _toolsOpen = !_toolsOpen);
   }
 
   Future<void> _showSecurity() async {
@@ -1640,6 +1638,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
                     ],
                   ),
                 ),
+                if (_toolsOpen)
+                  _ToolsSidebar(onClose: () => setState(() => _toolsOpen = false)),
               ],
             ),
           ),
@@ -1754,14 +1754,16 @@ class _ToolBtn extends StatelessWidget {
 
 enum _ToolOperation { base64Encode, base64Decode, urlEncode, urlDecode, hexEncode, hexDecode }
 
-class _ToolsDialog extends StatefulWidget {
-  const _ToolsDialog();
+class _ToolsSidebar extends StatefulWidget {
+  const _ToolsSidebar({required this.onClose});
+
+  final VoidCallback onClose;
 
   @override
-  State<_ToolsDialog> createState() => _ToolsDialogState();
+  State<_ToolsSidebar> createState() => _ToolsSidebarState();
 }
 
-class _ToolsDialogState extends State<_ToolsDialog> {
+class _ToolsSidebarState extends State<_ToolsSidebar> {
   final _input = TextEditingController();
   final _output = TextEditingController();
   var _operation = _ToolOperation.base64Encode;
@@ -1819,13 +1821,37 @@ class _ToolsDialogState extends State<_ToolsDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Row(
-        children: [Icon(Icons.build_outlined), SizedBox(width: 10), Text('Tools')],
+    return Container(
+      width: 380,
+      decoration: const BoxDecoration(
+        color: Color(0xFF20242B),
+        border: Border(left: BorderSide(color: Color(0xFF3D444D))),
       ),
-      content: SizedBox(
-        width: 720,
-        child: Column(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 8, 10),
+            child: Row(
+              children: [
+                const Icon(Icons.build_outlined, color: Colors.lightBlueAccent),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text('Tools', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+                ),
+                IconButton(
+                  tooltip: 'Close tools',
+                  onPressed: widget.onClose,
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             DropdownButtonFormField<_ToolOperation>(
@@ -1898,12 +1924,12 @@ class _ToolsDialogState extends State<_ToolsDialog> {
                 border: OutlineInputBorder(),
               ),
             ),
-          ],
-        ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
-      ],
     );
   }
 }
