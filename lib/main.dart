@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
 
@@ -1468,6 +1469,13 @@ class _WorkspacePageState extends State<WorkspacePage> {
     );
   }
 
+  Future<void> _showTools() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => const _ToolsDialog(),
+    );
+  }
+
   Future<void> _showSecurity() async {
     final result = await showAppSecurityDialog(context, appLock: widget.appLock);
     await widget.onLockSettingsChanged?.call();
@@ -1509,6 +1517,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
             onSession: _openNewSession,
             onFiles: _openFilesPane,
             onAbout: _showAbout,
+            onTools: _showTools,
             onSecurity: _showSecurity,
             onLock: widget.onLockNow,
             lockEnabled: widget.lockEnabled,
@@ -1648,6 +1657,7 @@ class _ToolBar extends StatelessWidget {
     required this.onSession,
     required this.onFiles,
     required this.onAbout,
+    required this.onTools,
     required this.onSecurity,
     required this.connected,
     required this.lockEnabled,
@@ -1657,6 +1667,7 @@ class _ToolBar extends StatelessWidget {
   final VoidCallback onSession;
   final VoidCallback onFiles;
   final VoidCallback onAbout;
+  final VoidCallback onTools;
   final VoidCallback onSecurity;
   final VoidCallback? onDisconnect;
   final VoidCallback? onLock;
@@ -1681,6 +1692,11 @@ class _ToolBar extends StatelessWidget {
             color: Colors.orangeAccent,
             onTap: onFiles),
         _ToolBtn(icon: Icons.fullscreen, label: 'Fullscreen', onTap: () {}),
+        _ToolBtn(
+            icon: Icons.build_outlined,
+            label: 'Tools',
+            color: Colors.lightBlueAccent,
+            onTap: onTools),
         _ToolBtn(
           icon: Icons.link_off,
           label: 'Disconnect',
@@ -1732,6 +1748,162 @@ class _ToolBtn extends StatelessWidget {
               style: const TextStyle(fontSize: 11, color: Colors.white70)),
         ]),
       ),
+    );
+  }
+}
+
+enum _ToolOperation { base64Encode, base64Decode, urlEncode, urlDecode, hexEncode, hexDecode }
+
+class _ToolsDialog extends StatefulWidget {
+  const _ToolsDialog();
+
+  @override
+  State<_ToolsDialog> createState() => _ToolsDialogState();
+}
+
+class _ToolsDialogState extends State<_ToolsDialog> {
+  final _input = TextEditingController();
+  final _output = TextEditingController();
+  var _operation = _ToolOperation.base64Encode;
+  String? _error;
+
+  @override
+  void dispose() {
+    _input.dispose();
+    _output.dispose();
+    super.dispose();
+  }
+
+  String _operationLabel(_ToolOperation operation) => switch (operation) {
+        _ToolOperation.base64Encode => 'Base64 encode',
+        _ToolOperation.base64Decode => 'Base64 decode',
+        _ToolOperation.urlEncode => 'URL encode',
+        _ToolOperation.urlDecode => 'URL decode',
+        _ToolOperation.hexEncode => 'Hex encode (UTF-8)',
+        _ToolOperation.hexDecode => 'Hex decode (UTF-8)',
+      };
+
+  void _convert() {
+    try {
+      final value = _input.text;
+      final result = switch (_operation) {
+        _ToolOperation.base64Encode => base64Encode(utf8.encode(value)),
+        _ToolOperation.base64Decode => utf8.decode(base64Decode(value.trim())),
+        _ToolOperation.urlEncode => Uri.encodeComponent(value),
+        _ToolOperation.urlDecode => Uri.decodeComponent(value),
+        _ToolOperation.hexEncode => utf8.encode(value)
+            .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+            .join(' '),
+        _ToolOperation.hexDecode => utf8.decode(value
+            .replaceAll(RegExp(r'0x', caseSensitive: false), '')
+            .split(RegExp(r'[\s,:-]+'))
+            .where((part) => part.isNotEmpty)
+            .map((part) => int.parse(part, radix: 16))
+            .toList()),
+      };
+      setState(() {
+        _output.text = result;
+        _error = null;
+      });
+    } catch (_) {
+      setState(() => _error = 'ورودی برای این تبدیل معتبر نیست.');
+    }
+  }
+
+  Future<void> _copyOutput() async {
+    if (_output.text.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: _output.text));
+    if (!mounted) return;
+    showAppToast(context, 'Output copied', kind: ToastKind.success);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Row(
+        children: [Icon(Icons.build_outlined), SizedBox(width: 10), Text('Tools')],
+      ),
+      content: SizedBox(
+        width: 720,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DropdownButtonFormField<_ToolOperation>(
+              value: _operation,
+              decoration: const InputDecoration(labelText: 'Operation'),
+              items: _ToolOperation.values
+                  .map((operation) => DropdownMenuItem(
+                        value: operation,
+                        child: Text(_operationLabel(operation)),
+                      ))
+                  .toList(),
+              onChanged: (value) {
+                if (value != null) setState(() => _operation = value);
+              },
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _input,
+              minLines: 4,
+              maxLines: 8,
+              decoration: const InputDecoration(
+                labelText: 'Input',
+                alignLabelWithHint: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                FilledButton.icon(
+                  onPressed: _convert,
+                  icon: const Icon(Icons.transform),
+                  label: const Text('Convert'),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: _copyOutput,
+                  icon: const Icon(Icons.copy_outlined),
+                  label: const Text('Copy output'),
+                ),
+                const Spacer(),
+                IconButton(
+                  tooltip: 'Clear',
+                  onPressed: () => setState(() {
+                    _input.clear();
+                    _output.clear();
+                    _error = null;
+                  }),
+                  icon: const Icon(Icons.clear),
+                ),
+              ],
+            ),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+                ),
+              ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _output,
+              minLines: 4,
+              maxLines: 8,
+              readOnly: true,
+              decoration: const InputDecoration(
+                labelText: 'Output',
+                alignLabelWithHint: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+      ],
     );
   }
 }
@@ -4819,4 +4991,3 @@ class _PermissionsDialogState extends State<_PermissionsDialog> {
     );
   }
 }
-
