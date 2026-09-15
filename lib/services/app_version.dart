@@ -1,13 +1,13 @@
 import 'package:package_info_plus/package_info_plus.dart';
 
-/// App version label aligned with GitHub release tags (`v0.1.0-build.N`).
+/// App version label aligned with GitHub release tags (`v2.0.0-build.N`).
 class AppVersion {
   AppVersion._();
 
-  static String _label = 'v0.1.0';
+  static String _label = 'v2.0.0';
   static bool _loaded = false;
 
-  /// Cached display label, e.g. `v0.1.0-build.42`.
+  /// Cached display label, e.g. `v2.0.0-build.42`.
   static String get label => _label;
 
   static Future<void> ensureLoaded() async {
@@ -19,8 +19,8 @@ class AppVersion {
 
   /// Maps Flutter `version` / `buildNumber` to the release-style label.
   ///
-  /// CI writes `0.1.0-build.N+N` into pubspec so [PackageInfo.version] is
-  /// already `0.1.0-build.N`. Local `0.1.0+1` stays `v0.1.0`.
+  /// CI writes `2.0.0-build.N+N` into pubspec so [PackageInfo.version] is
+  /// already `2.0.0-build.N`. Local `2.0.0+1` stays `v2.0.0`.
   static String formatFromPackageInfo(PackageInfo info) {
     final version = info.version.trim();
     final build = info.buildNumber.trim();

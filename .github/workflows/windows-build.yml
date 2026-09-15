@@ -27,7 +27,7 @@ jobs:
       - name: Set release version
         shell: pwsh
         run: |
-          $version = "0.1.0-build.${{ github.run_number }}"
+          $version = "2.0.0-build.${{ github.run_number }}"
           $build = "${{ github.run_number }}"
           (Get-Content pubspec.yaml) -replace '^version:.*', "version: ${version}+${build}" | Set-Content pubspec.yaml
           Write-Host "pubspec version -> ${version}+${build}"
@@ -94,7 +94,7 @@ jobs:
 
       - name: Set release version
         run: |
-          VERSION="0.1.0-build.${{ github.run_number }}"
+          VERSION="2.0.0-build.${{ github.run_number }}"
           BUILD="${{ github.run_number }}"
           sed -i "s/^version:.*/version: ${VERSION}+${BUILD}/" pubspec.yaml
           echo "pubspec version -> ${VERSION}+${BUILD}"
@@ -120,7 +120,7 @@ jobs:
           set -euo pipefail
           package_root="$RUNNER_TEMP/morixterm-deb"
           bundle_dir="build/linux/x64/release/bundle"
-          version="0.1.0-build.${GITHUB_RUN_NUMBER}"
+          version="2.0.0-build.${GITHUB_RUN_NUMBER}"
           deb_name="morixterm_${version}_amd64.deb"
 
           test -d "$bundle_dir"
@@ -159,9 +159,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v0.1.0-build.${{ github.run_number }}" \
+          gh release create "v2.0.0-build.${{ github.run_number }}" \
             release-assets/* \
             --repo "${{ github.repository }}" \
-            --title "morixterm v0.1.0 build ${{ github.run_number }}" \
+            --title "morixterm v2.0.0 build ${{ github.run_number }}" \
             --generate-notes \
             --prerelease
