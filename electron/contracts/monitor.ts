@@ -4,8 +4,8 @@ export type MonitorTarget = {
 };
 
 export type MonitorStats = {
-  cpu: number;
-  memory: number;
-  disk: number;
+  cpu: number | null;
+  memory: number | null;
+  disk: number | null;
   label: string;
 };

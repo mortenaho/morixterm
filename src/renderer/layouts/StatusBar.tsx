@@ -1,19 +1,42 @@
 import { useWorkspace } from '../stores/workspaceStore';
 import { useEffect, useState } from 'react';
-import { Activity, HardDrive, MemoryStick, Cpu } from 'lucide-react';
-import type { MonitorTarget } from '../../../electron/contracts/monitor';
+import { Activity, HardDrive, MemoryStick, Cpu, RefreshCw } from 'lucide-react';
+import type { MonitorStats, MonitorTarget } from '../../../electron/contracts/monitor';
+
+function displayPercent(value: number | null): string {
+  return value === null ? '—' : `${value}%`;
+}
 
 export default function StatusBar({ target }: { target?: MonitorTarget }) {
   const connectionLabel = useWorkspace(state => state.connectionLabel);
   const cols = useWorkspace(state => state.cols);
   const rows = useWorkspace(state => state.rows);
   const [visible, setVisible] = useState(true);
-  const [stats, setStats] = useState<{ cpu: number; memory: number; disk: number; label: string } | null>(null);
+  const [stats, setStats] = useState<MonitorStats | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [updating, setUpdating] = useState(false);
   useEffect(() => {
     let active = true;
     setStats(null);
+    setError(null);
     if (!target) return () => { active = false; };
-    const update = async () => { const result = await window.mori.monitor.stats(target); if (active && result.ok && result.value) setStats(result.value); };
+    const update = async () => {
+      if (active) setUpdating(true);
+      try {
+        const result = await window.mori.monitor.stats(target);
+        if (!active) return;
+        if (result.ok && result.value) {
+          setStats(result.value);
+          setError(null);
+        } else {
+          setError(result.message ?? 'Monitoring is unavailable for this session.');
+        }
+      } catch {
+        if (active) setError('Monitoring is unavailable for this session.');
+      } finally {
+        if (active) setUpdating(false);
+      }
+    };
     void update();
     const timer = window.setInterval(() => void update(), 3000);
     return () => { active = false; window.clearInterval(timer); };
@@ -24,8 +47,15 @@ export default function StatusBar({ target }: { target?: MonitorTarget }) {
       <span>{connectionLabel}</span>
       <span>UTF-8</span>
       <span>{cols}×{rows}</span>
-      <button className="monitor-toggle" onClick={() => setVisible(value => !value)} title={visible ? 'Hide session monitor' : 'Show session monitor'} aria-label={visible ? 'Hide session monitor' : 'Show session monitor'}><Activity size={12}/>{visible ? 'Monitor' : 'Show monitor'}</button>
-      {visible && stats && <div className="monitor-metrics"><strong>{stats.label}</strong><span><Cpu size={14}/> CPU {stats.cpu}%</span><span><MemoryStick size={14}/> RAM {stats.memory}%</span><span><HardDrive size={14}/> Disk {stats.disk ? `${stats.disk}%` : '—'}</span></div>}
+      {target && <button className="monitor-toggle" onClick={() => setVisible(value => !value)} title={visible ? 'Hide session monitor' : 'Show session monitor'} aria-label={visible ? 'Hide session monitor' : 'Show session monitor'}><Activity size={13}/>{visible ? 'Monitor' : 'Show monitor'}</button>}
+      {visible && target && <section className="monitor-metrics" aria-live="polite">
+        <div className="monitor-heading"><span className={`monitor-state ${error ? 'error' : ''}`}/><strong>{stats?.label ?? 'SESSION MONITOR'}</strong>{updating && <RefreshCw className="monitor-refresh" size={11}/>}</div>
+        {stats ? <>
+          <span title="CPU usage"><Cpu size={13}/><b>CPU</b>{displayPercent(stats.cpu)}</span>
+          <span title="Memory usage"><MemoryStick size={13}/><b>RAM</b>{displayPercent(stats.memory)}</span>
+          <span title="Root filesystem usage"><HardDrive size={13}/><b>DISK</b>{displayPercent(stats.disk)}</span>
+        </> : <small className="monitor-message">{error ?? 'Collecting session metrics…'}</small>}
+      </section>}
       <span className="statusbar-brand">Made with care by MoriXterm</span>
     </footer>
   );

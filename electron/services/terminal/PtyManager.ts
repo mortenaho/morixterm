@@ -81,8 +81,8 @@ export class PtyManager {
   async stats(id: string): Promise<MonitorStats> {
     const session = this.sessions.get(id);
     if (!session) throw new Error('Local terminal is not running');
-    let cpu = 0;
-    let memory = 0;
+    let cpu: number | null = null;
+    let memory: number | null = null;
     if (process.platform === 'linux') {
       try {
         const [stat, status] = await Promise.all([
@@ -95,7 +95,7 @@ export class PtyManager {
         const previous = this.cpuSamples.get(id);
         if (previous) {
           const elapsedSeconds = Number(time - previous.time) / 1e9;
-          cpu = elapsedSeconds > 0 ? (ticks - previous.ticks) / (elapsedSeconds * 100 * os.cpus().length) * 100 : 0;
+          cpu = elapsedSeconds > 0 ? (ticks - previous.ticks) / (elapsedSeconds * 100 * os.cpus().length) * 100 : null;
         }
         this.cpuSamples.set(id, { ticks, time });
         const residentKb = Number(status.match(/^VmRSS:\s+(\d+)/m)?.[1] ?? 0);
@@ -103,9 +103,9 @@ export class PtyManager {
       } catch { /* the process may exit between the two reads */ }
     }
     return {
-      cpu: Math.max(0, Math.min(100, Math.round(cpu))),
-      memory: Math.max(0, Math.min(100, Math.round(memory))),
-      disk: 0,
+      cpu: cpu === null ? null : Math.max(0, Math.min(100, Math.round(cpu))),
+      memory: memory === null ? null : Math.max(0, Math.min(100, Math.round(memory))),
+      disk: null,
       label: 'LOCAL SESSION',
     };
   }

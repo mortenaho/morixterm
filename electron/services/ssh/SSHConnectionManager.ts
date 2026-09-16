@@ -30,6 +30,7 @@ type LiveSession = {
 
 export class SSHConnectionManager {
   private readonly sessions = new Map<string, LiveSession>();
+  private readonly cpuSamples = new Map<string, { total: number; idle: number }>();
 
   private setState(id: string, state: ConnectionState, message?: string): void {
     const session = this.sessions.get(id);
@@ -87,6 +88,7 @@ export class SSHConnectionManager {
                 });
                 channel.on('close', () => {
                   this.sessions.delete(input.id);
+                  this.cpuSamples.delete(input.id);
                   if (!window.isDestroyed()) {
                     window.webContents.send('ssh:closed', { id: input.id });
                     window.webContents.send('ssh:state', { id: input.id, state: 'Disconnected' });
@@ -114,6 +116,7 @@ export class SSHConnectionManager {
     const session = this.sessions.get(id);
     try { session?.client.end(); } catch { /* ignore */ }
     this.sessions.delete(id);
+    this.cpuSamples.delete(id);
     logger.warn(`SSH failed ${id}: ${message}`);
   }
 
@@ -130,15 +133,22 @@ export class SSHConnectionManager {
     if (!session) return Promise.reject(new Error('SSH session is not connected'));
     return new Promise((resolve, reject) => {
       session.client.exec(
-        "LC_ALL=C sh -c 'cpu=$(awk \"/^cpu / {u=$2+$4+$6+$7+$8; t=$2+$3+$4+$5+$6+$7+$8; printf \\\"%d\\\", (t ? u*100/t : 0)}\" /proc/stat 2>/dev/null || echo 0); mem=$(awk \"/^MemTotal:/ {t=$2} /^MemAvailable:/ {a=$2} END {printf \\\"%d\\\", (t ? (t-a)*100/t : 0)}\" /proc/meminfo 2>/dev/null || echo 0); disk=$(df -P / 2>/dev/null | awk \"NR==2 {gsub(/%/,\\\"\\\",$5); print $5}\" || echo 0); printf \"cpu=%s\\nmem=%s\\ndisk=%s\\n\" \"$cpu\" \"$mem\" \"$disk\"'",
+        "LC_ALL=C awk 'NR == 1 { total = 0; for (i = 2; i <= NF; i++) total += $i; idle = $5 + $6; printf \"cpu_total=%d\\ncpu_idle=%d\\n\", total, idle; exit }' /proc/stat 2>/dev/null; awk '/^MemTotal:/ { total = $2 } /^MemAvailable:/ { available = $2 } END { if (total > 0 && available >= 0) printf \"mem=%d\\n\", ((total - available) * 100 / total) }' /proc/meminfo 2>/dev/null; df -P / 2>/dev/null | awk 'NR == 2 { gsub(/%/, \"\", $5); printf \"disk=%s\\n\", $5 }'",
         (error, channel) => {
           if (error) { reject(error); return; }
           let output = '';
           channel.on('data', (chunk: Buffer | string) => { output += chunk.toString(); });
           channel.on('close', () => {
-            const values = Object.fromEntries(output.trim().split(/\r?\n/).map(line => line.split('='))) as Record<string, string>;
+            const values = Object.fromEntries(output.trim().split(/\r?\n/).filter(Boolean).map(line => line.split('='))) as Record<string, string>;
+            const total = Number.parseInt(values.cpu_total ?? '', 10);
+            const idle = Number.parseInt(values.cpu_idle ?? '', 10);
+            const previous = this.cpuSamples.get(id);
+            const cpu = previous && Number.isFinite(total) && Number.isFinite(idle)
+              ? percentFromCpuSample(total - previous.total, idle - previous.idle)
+              : null;
+            if (Number.isFinite(total) && Number.isFinite(idle)) this.cpuSamples.set(id, { total, idle });
             resolve({
-              cpu: boundedPercent(values.cpu),
+              cpu,
               memory: boundedPercent(values.mem),
               disk: boundedPercent(values.disk),
               label: 'REMOTE SESSION',
@@ -231,6 +241,7 @@ export class SSHConnectionManager {
     try { session.channel?.end(); } catch { /* ignore */ }
     try { session.client.end(); } catch { /* ignore */ }
     this.sessions.delete(id);
+    this.cpuSamples.delete(id);
     if (!session.window.isDestroyed()) {
       session.window.webContents.send('ssh:state', { id, state: 'Disconnected' });
     }
@@ -241,9 +252,15 @@ export class SSHConnectionManager {
   }
 }
 
-function boundedPercent(value: string | undefined): number {
+function boundedPercent(value: string | undefined): number | null {
+  if (value === undefined) return null;
   const number = Number.parseInt(value ?? '0', 10);
-  return Number.isFinite(number) ? Math.max(0, Math.min(100, number)) : 0;
+  return Number.isFinite(number) ? Math.max(0, Math.min(100, number)) : null;
+}
+
+function percentFromCpuSample(total: number, idle: number): number | null {
+  if (!Number.isFinite(total) || !Number.isFinite(idle) || total <= 0) return null;
+  return Math.max(0, Math.min(100, Math.round((total - idle) * 100 / total)));
 }
 
 export const sshManager = new SSHConnectionManager();
