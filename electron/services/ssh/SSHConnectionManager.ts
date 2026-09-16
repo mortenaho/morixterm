@@ -31,6 +31,7 @@ type LiveSession = {
 export class SSHConnectionManager {
   private readonly sessions = new Map<string, LiveSession>();
   private readonly cpuSamples = new Map<string, { total: number; idle: number }>();
+  private readonly monitorPlatforms = new Map<string, 'linux' | 'windows'>();
 
   private setState(id: string, state: ConnectionState, message?: string): void {
     const session = this.sessions.get(id);
@@ -89,6 +90,7 @@ export class SSHConnectionManager {
                 channel.on('close', () => {
                   this.sessions.delete(input.id);
                   this.cpuSamples.delete(input.id);
+                  this.monitorPlatforms.delete(input.id);
                   if (!window.isDestroyed()) {
                     window.webContents.send('ssh:closed', { id: input.id });
                     window.webContents.send('ssh:state', { id: input.id, state: 'Disconnected' });
@@ -117,6 +119,7 @@ export class SSHConnectionManager {
     try { session?.client.end(); } catch { /* ignore */ }
     this.sessions.delete(id);
     this.cpuSamples.delete(id);
+    this.monitorPlatforms.delete(id);
     logger.warn(`SSH failed ${id}: ${message}`);
   }
 
@@ -128,32 +131,50 @@ export class SSHConnectionManager {
     this.sessions.get(id)?.channel?.setWindow(rows, cols, 0, 0);
   }
 
-  stats(id: string): Promise<MonitorStats> {
+  async stats(id: string): Promise<MonitorStats> {
     const session = this.sessions.get(id);
-    if (!session) return Promise.reject(new Error('SSH session is not connected'));
+    if (!session) throw new Error('SSH session is not connected');
+    if (this.monitorPlatforms.get(id) === 'windows') return this.readWindowsStats(session);
+
+    const linux = await this.readLinuxStats(session, id);
+    if (linux) {
+      this.monitorPlatforms.set(id, 'linux');
+      return linux;
+    }
+
+    const windows = await this.readWindowsStats(session);
+    this.monitorPlatforms.set(id, 'windows');
+    return windows;
+  }
+
+  private async readLinuxStats(session: LiveSession, id: string): Promise<MonitorStats | null> {
+    const values = parseMonitorValues(await this.executeMonitorCommand(session, LINUX_MONITOR_COMMAND));
+    const total = Number.parseInt(values.cpu_total ?? '', 10);
+    const idle = Number.parseInt(values.cpu_idle ?? '', 10);
+    if (!Number.isFinite(total) || !Number.isFinite(idle)) return null;
+    const previous = this.cpuSamples.get(id);
+    const cpu = previous ? percentFromCpuSample(total - previous.total, idle - previous.idle) : null;
+    this.cpuSamples.set(id, { total, idle });
+    return { cpu, memory: boundedPercent(values.mem), disk: boundedPercent(values.disk), label: 'LINUX SSH' };
+  }
+
+  private async readWindowsStats(session: LiveSession): Promise<MonitorStats> {
+    const values = parseMonitorValues(await this.executeMonitorCommand(session, WINDOWS_MONITOR_COMMAND));
+    if (values.cpu === undefined && values.mem === undefined && values.disk === undefined) {
+      throw new Error('The SSH host does not provide Linux or Windows monitoring commands.');
+    }
+    return { cpu: boundedPercent(values.cpu), memory: boundedPercent(values.mem), disk: boundedPercent(values.disk), label: 'WINDOWS SSH' };
+  }
+
+  private executeMonitorCommand(session: LiveSession, command: string): Promise<string> {
     return new Promise((resolve, reject) => {
       session.client.exec(
-        "LC_ALL=C awk 'NR == 1 { total = 0; for (i = 2; i <= NF; i++) total += $i; idle = $5 + $6; printf \"cpu_total=%d\\ncpu_idle=%d\\n\", total, idle; exit }' /proc/stat 2>/dev/null; awk '/^MemTotal:/ { total = $2 } /^MemAvailable:/ { available = $2 } END { if (total > 0 && available >= 0) printf \"mem=%d\\n\", ((total - available) * 100 / total) }' /proc/meminfo 2>/dev/null; df -P / 2>/dev/null | awk 'NR == 2 { gsub(/%/, \"\", $5); printf \"disk=%s\\n\", $5 }'",
+        command,
         (error, channel) => {
           if (error) { reject(error); return; }
           let output = '';
           channel.on('data', (chunk: Buffer | string) => { output += chunk.toString(); });
-          channel.on('close', () => {
-            const values = Object.fromEntries(output.trim().split(/\r?\n/).filter(Boolean).map(line => line.split('='))) as Record<string, string>;
-            const total = Number.parseInt(values.cpu_total ?? '', 10);
-            const idle = Number.parseInt(values.cpu_idle ?? '', 10);
-            const previous = this.cpuSamples.get(id);
-            const cpu = previous && Number.isFinite(total) && Number.isFinite(idle)
-              ? percentFromCpuSample(total - previous.total, idle - previous.idle)
-              : null;
-            if (Number.isFinite(total) && Number.isFinite(idle)) this.cpuSamples.set(id, { total, idle });
-            resolve({
-              cpu,
-              memory: boundedPercent(values.mem),
-              disk: boundedPercent(values.disk),
-              label: 'REMOTE SESSION',
-            });
-          });
+          channel.on('close', () => resolve(output));
           channel.on('error', reject);
         },
       );
@@ -242,6 +263,7 @@ export class SSHConnectionManager {
     try { session.client.end(); } catch { /* ignore */ }
     this.sessions.delete(id);
     this.cpuSamples.delete(id);
+    this.monitorPlatforms.delete(id);
     if (!session.window.isDestroyed()) {
       session.window.webContents.send('ssh:state', { id, state: 'Disconnected' });
     }
@@ -262,6 +284,28 @@ function percentFromCpuSample(total: number, idle: number): number | null {
   if (!Number.isFinite(total) || !Number.isFinite(idle) || total <= 0) return null;
   return Math.max(0, Math.min(100, Math.round((total - idle) * 100 / total)));
 }
+
+function parseMonitorValues(output: string): Record<string, string> {
+  return Object.fromEntries(
+    output.trim().split(/\r?\n/).flatMap(line => {
+      const separator = line.indexOf('=');
+      return separator > 0 ? [[line.slice(0, separator).trim(), line.slice(separator + 1).trim()]] : [];
+    }),
+  );
+}
+
+const LINUX_MONITOR_COMMAND = "LC_ALL=C awk 'NR == 1 { total = 0; for (i = 2; i <= NF; i++) total += $i; idle = $5 + $6; printf \"cpu_total=%d\\ncpu_idle=%d\\n\", total, idle; exit }' /proc/stat 2>/dev/null; awk '/^MemTotal:/ { total = $2 } /^MemAvailable:/ { available = $2 } END { if (total > 0 && available >= 0) printf \"mem=%d\\n\", ((total - available) * 100 / total) }' /proc/meminfo 2>/dev/null; df -P / 2>/dev/null | awk 'NR == 2 { gsub(/%/, \"\", $5); printf \"disk=%s\\n\", $5 }'";
+
+const WINDOWS_MONITOR_COMMAND = `powershell.exe -NoProfile -NonInteractive -EncodedCommand ${Buffer.from(`
+$cpu = [math]::Round((Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average)
+$os = Get-CimInstance Win32_OperatingSystem
+$mem = if ($os.TotalVisibleMemorySize -gt 0) { [math]::Round((($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) * 100) / $os.TotalVisibleMemorySize) }
+$drive = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'"
+$disk = if ($drive -and $drive.Size -gt 0) { [math]::Round((($drive.Size - $drive.FreeSpace) * 100) / $drive.Size) }
+Write-Output "cpu=$cpu"
+Write-Output "mem=$mem"
+Write-Output "disk=$disk"
+`, 'utf16le').toString('base64')}`;
 
 export const sshManager = new SSHConnectionManager();
 
