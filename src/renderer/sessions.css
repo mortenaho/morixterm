@@ -1,0 +1,18 @@
+.session-dialog { border: 0; padding: 0; color: inherit; background: transparent; max-width: calc(100vw - 32px); max-height: 90vh; overflow-x: hidden; overflow-y: auto; }
+.session-dialog::backdrop { background: #020711b3; }
+.session-fields { border: 0; padding: 0; margin: 0; }
+.session-modal .favorite-field { display: flex; align-items: center; gap: 10px; }
+.session-modal .favorite-field input { width: 16px; height: 16px; margin: 0; }
+.modal-actions button { min-height: 36px; display: flex; align-items: center; gap: 6px; }
+.session-connect { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; padding: 0; background: transparent; text-align: left; }
+.session-main { overflow-wrap: anywhere; }
+.row-edit { background: transparent; }
+.list-status { margin: 0 30px 45px; color: #8291a5; font-size: 12px; }
+.pagination { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 0; font-size: 11px; color: #8291a5; }
+.pagination-actions { display: inline-flex; align-items: center; gap: 8px; }
+.pagination button { display: flex; align-items: center; gap: 4px; background: #152335; padding: 7px; border-radius: 6px; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+.empty-state { color: #8291a5; font-size: 12px; }
+.toast-error { border-color: #cf6972; }
+.session-dialog .toast { position: static; margin: 10px auto; width: min(410px, 90vw); }
+button:focus-visible { outline: 2px solid #3ddac5; outline-offset: 2px; }
