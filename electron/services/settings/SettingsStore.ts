@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { chmodSync, readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { appSettingsSchema, defaultSettings, type AppSettings } from '../../contracts/settings.js';
 
@@ -7,6 +7,7 @@ export class SettingsStore {
 
   constructor(private readonly filename: string) {
     mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
+    if (process.platform !== 'win32' && existsSync(filename)) chmodSync(filename, 0o600);
     this.cache = this.load();
   }
 

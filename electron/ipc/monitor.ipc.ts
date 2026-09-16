@@ -5,7 +5,7 @@ import { ptyManager } from '../services/terminal/PtyManager.js';
 import { z } from 'zod';
 import type { MonitorStats } from '../contracts/monitor.js';
 
-const targetSchema = z.object({ transport: z.enum(['pty', 'ssh']), id: z.string().min(1).max(100) });
+const targetSchema = z.object({ transport: z.enum(['pty', 'ssh']), id: z.string().min(1).max(100) }).strict();
 
 export function registerMonitorIpc(): void {
   ipcMain.handle('monitor:stats', async (event, value: unknown) => {

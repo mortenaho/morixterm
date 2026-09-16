@@ -1,5 +1,6 @@
-import { app, BrowserWindow, Menu, nativeImage, shell } from 'electron';
+import { app, BrowserWindow, Menu, nativeImage, session, shell } from 'electron';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { z } from 'zod';
 import { SessionRepository } from './services/SessionRepository.js';
 import { SettingsStore } from './services/settings/SettingsStore.js';
@@ -16,12 +17,13 @@ import { sshManager } from './services/ssh/SSHConnectionManager.js';
 import { rdpService } from './services/rdp/RdpService.js';
 import { logger } from './utils/logger.js';
 import { ipcMain } from 'electron';
+import { isTrustedRendererUrl, permitted, setTrustedRendererUrl } from './utils/ipcGuard.js';
 
 const connectionSchema = z.object({
   host: z.string().min(1).max(255),
   port: z.number().int().min(1).max(65535),
   username: z.string().min(1).max(128),
-});
+}).strict();
 
 let mainWindow: BrowserWindow | null = null;
 let repository: SessionRepository | undefined;
@@ -93,6 +95,10 @@ function buildMenu(window: BrowserWindow): void {
 
 function createWindow(): void {
   const icon = brandingIcon();
+  const rendererUrl = app.isPackaged
+    ? pathToFileURL(path.join(__dirname, '../dist/index.html')).toString()
+    : process.env.MORIXTERM_DEV_SERVER_URL ?? 'http://localhost:5173';
+  setTrustedRendererUrl(rendererUrl);
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,
@@ -107,35 +113,50 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      webviewTag: false,
+      safeDialogs: true,
+      spellcheck: false,
     },
   });
 
   buildMenu(mainWindow);
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!isTrustedRendererUrl(url)) event.preventDefault();
+  });
+  mainWindow.webContents.on('will-attach-webview', event => event.preventDefault());
   mainWindow.once('ready-to-show', () => mainWindow?.show());
-
-  if (!app.isPackaged) {
-    void mainWindow.loadURL('http://localhost:5173');
-  } else {
-    void mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
-  }
+  void mainWindow.loadURL(rendererUrl);
 
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
-ipcMain.handle('app:info', () => ({
+ipcMain.handle('app:info', event => permitted(event) ? ({
   version: app.getVersion(),
   platform: process.platform,
   electron: process.versions.electron,
   node: process.versions.node,
   name: 'MoriXterm',
-}));
-ipcMain.handle('connection:validate', (_event, value: unknown) => connectionSchema.safeParse(value));
+}) : Promise.reject(new Error('Access denied.')));
+ipcMain.handle('connection:validate', (event, value: unknown) => permitted(event)
+  ? connectionSchema.safeParse(value)
+  : { success: false, error: { message: 'Access denied.' } });
 
 if (gotLock) {
   app.whenReady().then(() => {
     app.setName('MoriXterm');
+    if (process.platform !== 'win32') process.umask(0o077);
+    const clipboardPermissions = new Set(['clipboard-read', 'clipboard-sanitized-write']);
+    session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+      callback(clipboardPermissions.has(permission) && isTrustedRendererUrl(webContents.getURL()));
+    });
+    session.defaultSession.setPermissionCheckHandler((webContents, permission) =>
+      Boolean(webContents) && clipboardPermissions.has(permission) && isTrustedRendererUrl(webContents!.getURL()));
     repository = new SessionRepository(path.join(app.getPath('userData'), 'morixterm.sqlite'));
     settingsStore = new SettingsStore(path.join(app.getPath('userData'), 'settings.json'));
+    sshManager.configureKnownHosts(path.join(app.getPath('userData'), 'known-hosts.json'));
     registerSessions(repository);
     registerTerminalIpc();
     registerSshIpc(repository);

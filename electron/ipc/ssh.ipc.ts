@@ -5,8 +5,8 @@ import { sshManager } from '../services/ssh/SSHConnectionManager.js';
 import { permitted, senderWindow } from '../utils/ipcGuard.js';
 
 const idSchema = z.string().min(1).max(100);
-const dataSchema = z.object({ id: idSchema, data: z.string().max(100000) });
-const resizeSchema = z.object({ id: idSchema, cols: z.number().int().min(1).max(500), rows: z.number().int().min(1).max(200) });
+const dataSchema = z.object({ id: idSchema, data: z.string().max(100000) }).strict();
+const resizeSchema = z.object({ id: idSchema, cols: z.number().int().min(1).max(500), rows: z.number().int().min(1).max(200) }).strict();
 const connectSchema = z.object({
   id: idSchema,
   sessionId: z.string().uuid(),
@@ -14,7 +14,7 @@ const connectSchema = z.object({
   rows: z.number().int().min(1).max(200).optional(),
   password: z.string().max(1000).optional(),
   privateKey: z.string().max(100000).optional(),
-});
+}).strict();
 
 export function registerSshIpc(repository: SessionRepository): void {
   ipcMain.handle('ssh:connect', async (event, value: unknown) => {

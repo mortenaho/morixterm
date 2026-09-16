@@ -67,12 +67,12 @@ export class FreeRdpAdapter implements IRdpAdapter {
     }
 
     const args = this.buildArgs(command, input);
-    logger.info(`RDP launch ${input.id} via ${command} ${input.username}@${input.host}:${input.port}`);
+    logger.info(`RDP launch ${input.id} via ${command}`);
 
     return new Promise((resolve, reject) => {
       const child = spawn(command, args, {
         detached: false,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: [input.password && !/mstsc(?:\.exe)?$/i.test(command) ? 'pipe' : 'ignore', 'pipe', 'pipe'],
         env: { ...process.env },
       });
 
@@ -97,10 +97,15 @@ export class FreeRdpAdapter implements IRdpAdapter {
       child.stderr?.on('data', chunk => {
         const text = String(chunk);
         stderr.push(text);
-        logger.warn(`RDP stderr ${input.id}: ${text.trim()}`);
+        logger.warn(`RDP client reported an error for ${input.id}`);
       });
 
-      child.once('spawn', () => succeed());
+      child.once('spawn', () => {
+        if (input.password && child.stdin) {
+          child.stdin.end(`${input.password}\n`);
+        }
+        succeed();
+      });
 
       child.once('error', error => {
         const message = error.message.includes('ENOENT')
@@ -138,7 +143,7 @@ export class FreeRdpAdapter implements IRdpAdapter {
       '/network:auto',
     ];
     if (input.domain) args.push(`/d:${input.domain}`);
-    if (input.password) args.push(`/p:${input.password}`);
+    if (input.password) args.push('/from-stdin');
     return args;
   }
 

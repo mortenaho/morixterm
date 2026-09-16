@@ -8,6 +8,14 @@ declare module 'ssh2' {
     readyTimeout?: number;
     keepaliveInterval?: number;
     tryKeyboard?: boolean;
+    hostHash?: string;
+    hostVerifier?: (key: string, callback: (verified: boolean) => void) => void;
+    algorithms?: {
+      kex?: string[];
+      cipher?: string[];
+      serverHostKey?: string[];
+      hmac?: string[];
+    };
   }
   export interface ClientChannel {
     on(event: string, listener: (...args: any[]) => void): this;

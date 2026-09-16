@@ -1,7 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Vazirmatn:wght@400;500;600;700&display=swap');
-
 :root {
-  font-family: Inter, Vazirmatn, system-ui, sans-serif;
+  font-family: Inter, Vazirmatn, "Segoe UI Variable", "Noto Sans", system-ui, sans-serif;
   color: #e7edf7;
   background: #080e18;
   font-synthesis: none;

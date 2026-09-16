@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { listSessionsSchema, sessionFields, type Session, type SessionPage } from '../contracts/sessions.js';
 import type { Folder } from '../contracts/folders.js';
@@ -11,7 +11,13 @@ export class SessionRepository {
   constructor(filename: string) {
     mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
     this.db = new DatabaseSync(filename);
+    if (process.platform !== 'win32') chmodSync(filename, 0o600);
     this.db.exec('PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;');
+    if (process.platform !== 'win32') {
+      for (const file of [filename, `${filename}-wal`, `${filename}-shm`]) {
+        if (existsSync(file)) chmodSync(file, 0o600);
+      }
+    }
     const version = Number(this.db.prepare('PRAGMA user_version').get()?.user_version);
     if (version > 4) { this.db.close(); throw new Error('Unsupported database version'); }
     if (version === 0) {

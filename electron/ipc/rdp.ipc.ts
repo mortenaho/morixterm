@@ -14,7 +14,7 @@ const connectSchema = z.object({
   username: z.string().min(1).max(128).optional(),
   password: z.string().max(1000).optional(),
   domain: z.string().max(128).optional(),
-});
+}).strict();
 
 export function registerRdpIpc(repository: SessionRepository): void {
   ipcMain.handle('rdp:status', event => {

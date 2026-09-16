@@ -1,16 +1,19 @@
 import log from 'electron-log';
 
 const secretPattern = /(password|passwd|secret|token|private[_-]?key)\s*[:=]\s*\S+/gi;
+const commandLinePasswordPattern = /\/p:[^\s]+/gi;
 
 export function redact(value: string): string {
-  return value.replace(secretPattern, '$1=[REDACTED]');
+  return value
+    .replace(secretPattern, '$1=[REDACTED]')
+    .replace(commandLinePasswordPattern, '/p:[REDACTED]');
 }
 
 log.transports.file.level = 'info';
 log.transports.console.level = 'info';
 
 export const logger = {
-  info: (message: string, ...args: unknown[]) => log.info(redact(message), ...args),
-  warn: (message: string, ...args: unknown[]) => log.warn(redact(message), ...args),
-  error: (message: string, ...args: unknown[]) => log.error(redact(message), ...args),
+  info: (message: string) => log.info(redact(message)),
+  warn: (message: string) => log.warn(redact(message)),
+  error: (message: string) => log.error(redact(message)),
 };

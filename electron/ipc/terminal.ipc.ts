@@ -5,13 +5,13 @@ import { ptyManager } from '../services/terminal/PtyManager.js';
 import { permitted, senderWindow } from '../utils/ipcGuard.js';
 
 const idSchema = z.string().min(1).max(100);
-const dataSchema = z.object({ id: idSchema, data: z.string().max(100000) });
-const resizeSchema = z.object({ id: idSchema, cols: z.number().int().min(1).max(500), rows: z.number().int().min(1).max(200) });
+const dataSchema = z.object({ id: idSchema, data: z.string().max(100000) }).strict();
+const resizeSchema = z.object({ id: idSchema, cols: z.number().int().min(1).max(500), rows: z.number().int().min(1).max(200) }).strict();
 const startSchema = z.object({
   cols: z.number().int().min(1).max(500).optional(),
   rows: z.number().int().min(1).max(200).optional(),
   cwd: z.string().max(1024).optional(),
-}).default({});
+}).strict().default({});
 
 export function registerTerminalIpc(): void {
   ipcMain.handle('pty:start', (event, value: unknown = {}) => {

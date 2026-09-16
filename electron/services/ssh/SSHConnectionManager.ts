@@ -1,5 +1,5 @@
 import { Client, type ClientChannel, type ConnectConfig, type Sftp } from 'ssh2';
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, dialog } from 'electron';
 import { getPassword } from '../credentials.js';
 import { logger } from '../../utils/logger.js';
 import type { ConnectionState } from '../../contracts/terminal.js';
@@ -8,6 +8,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import pathModule from 'node:path';
 import type { MonitorStats } from '../../contracts/monitor.js';
+import { KnownHostsStore } from './KnownHostsStore.js';
 
 export type SshConnectInput = {
   id: string;
@@ -32,6 +33,11 @@ export class SSHConnectionManager {
   private readonly sessions = new Map<string, LiveSession>();
   private readonly cpuSamples = new Map<string, { total: number; idle: number }>();
   private readonly monitorPlatforms = new Map<string, 'linux' | 'windows'>();
+  private knownHosts?: KnownHostsStore;
+
+  configureKnownHosts(filePath: string): void {
+    this.knownHosts = new KnownHostsStore(filePath);
+  }
 
   private setState(id: string, state: ConnectionState, message?: string): void {
     const session = this.sessions.get(id);
@@ -55,6 +61,7 @@ export class SSHConnectionManager {
       this.setState(input.id, 'Connecting');
 
       (async () => {
+        if (!this.knownHosts) throw new Error('SSH host verification is not initialized');
         const config: ConnectConfig = {
           host: input.host,
           port: input.port,
@@ -62,6 +69,18 @@ export class SSHConnectionManager {
           readyTimeout: 15000,
           keepaliveInterval: 10000,
           tryKeyboard: false,
+          hostHash: 'sha256',
+          hostVerifier: (hash, callback) => {
+            void this.verifyHostKey(window, input.host, input.port, hash)
+              .then(callback)
+              .catch(() => callback(false));
+          },
+          algorithms: {
+            kex: ['curve25519-sha256', 'curve25519-sha256@libssh.org', 'ecdh-sha2-nistp256', 'diffie-hellman-group16-sha512', 'diffie-hellman-group14-sha256'],
+            cipher: ['chacha20-poly1305@openssh.com', 'aes256-gcm@openssh.com', 'aes128-gcm@openssh.com', 'aes256-ctr', 'aes128-ctr'],
+            serverHostKey: ['ssh-ed25519', 'ecdsa-sha2-nistp256', 'rsa-sha2-512', 'rsa-sha2-256'],
+            hmac: ['hmac-sha2-512-etm@openssh.com', 'hmac-sha2-256-etm@openssh.com', 'hmac-sha2-512', 'hmac-sha2-256'],
+          },
         };
         const vaultPassword = await getPassword(input.sessionId);
         config.password = input.password || vaultPassword || undefined;
@@ -96,7 +115,7 @@ export class SSHConnectionManager {
                     window.webContents.send('ssh:state', { id: input.id, state: 'Disconnected' });
                   }
                 });
-                logger.info(`SSH connected ${input.id} ${input.username}@${input.host}:${input.port}`);
+                logger.info(`SSH connected ${input.id}`);
                 resolve({ id: input.id });
               },
             );
@@ -111,6 +130,33 @@ export class SSHConnectionManager {
         reject(error);
       });
     });
+  }
+
+  private async verifyHostKey(window: BrowserWindow, host: string, port: number, hash: string): Promise<boolean> {
+    if (!this.knownHosts) return false;
+    const endpoint = `${host.trim().toLowerCase()}:${port}`;
+    const fingerprint = formatHostFingerprint(hash);
+    const trusted = await this.knownHosts.lookup(endpoint);
+    if (trusted === fingerprint) return true;
+
+    const changed = trusted !== undefined;
+    const response = await dialog.showMessageBox(window, {
+      type: 'warning',
+      title: changed ? 'SSH host key changed' : 'Unknown SSH host',
+      message: changed
+        ? 'The SSH host key has changed. This can indicate a man-in-the-middle attack.'
+        : 'This SSH host has not been trusted yet.',
+      detail: changed
+        ? `Host: ${endpoint}\nTrusted: ${trusted}\nReceived: ${fingerprint}\n\nVerify the new fingerprint with the server administrator before continuing.`
+        : `Host: ${endpoint}\nFingerprint: ${fingerprint}\n\nVerify this fingerprint with the server administrator before trusting it.`,
+      buttons: changed ? ['Cancel', 'Replace key and connect'] : ['Cancel', 'Trust and connect'],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    });
+    if (response.response !== 1) return false;
+    await this.knownHosts.remember(endpoint, fingerprint);
+    return true;
   }
 
   private fail(id: string, message: string): void {
@@ -283,6 +329,13 @@ function boundedPercent(value: string | undefined): number | null {
 function percentFromCpuSample(total: number, idle: number): number | null {
   if (!Number.isFinite(total) || !Number.isFinite(idle) || total <= 0) return null;
   return Math.max(0, Math.min(100, Math.round((total - idle) * 100 / total)));
+}
+
+function formatHostFingerprint(hexHash: string): string {
+  if (!/^[0-9a-f]+$/i.test(hexHash) || hexHash.length % 2 !== 0) {
+    throw new Error('The SSH server returned an invalid host-key fingerprint.');
+  }
+  return `SHA256:${Buffer.from(hexHash, 'hex').toString('base64').replace(/=+$/, '')}`;
 }
 
 function parseMonitorValues(output: string): Record<string, string> {

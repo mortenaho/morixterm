@@ -7,16 +7,15 @@
   "license": "MIT",
   "scripts": {
     "predev": "tsc -p electron/tsconfig.json",
-    "dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "dev": "concurrently -k \"vite --strictPort\" \"wait-on http://localhost:5173 && electron .\"",
     "build": "tsc -b && vite build && tsc -p electron/tsconfig.json",
     "preview": "vite preview",
     "typecheck": "tsc -b --pretty false",
-    "test": "npm run build && node --test tests/sessions.test.cjs",
+    "test": "npm run build && node --test tests/*.test.cjs",
     "prepare-native-modules": "node node_modules/cpu-features/buildcheck.js > node_modules/cpu-features/buildcheck.gypi",
     "package": "npm run build && npm run prepare-native-modules && electron-builder"
   },
   "dependencies": {
-    "@xterm/addon-clipboard": "^0.2.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-search": "^0.16.0",
     "@xterm/addon-unicode11": "^0.9.0",
@@ -50,6 +49,16 @@
   "build": {
     "appId": "com.morixterm.desktop",
     "productName": "MoriXterm",
+    "asar": true,
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true,
+      "grantFileProtocolExtraPrivileges": false
+    },
     "files": [
       "dist",
       "dist-electron",
