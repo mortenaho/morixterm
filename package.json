@@ -3,7 +3,16 @@
   "version": "0.1.0",
   "description": "A modern workstation for SSH, RDP, terminals and remote files.",
   "main": "dist-electron/main.js",
-  "author": "MoriXterm",
+  "author": {
+    "name": "MoriXterm",
+    "email": "mortenaho@users.noreply.github.com",
+    "url": "https://github.com/mortenaho/morixterm"
+  },
+  "homepage": "https://github.com/mortenaho/morixterm",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mortenaho/morixterm.git"
+  },
   "license": "MIT",
   "scripts": {
     "predev": "tsc -p electron/tsconfig.json",
@@ -69,6 +78,7 @@
       "output": "release"
     },
     "linux": {
+      "maintainer": "MoriXterm <mortenaho@users.noreply.github.com>",
       "target": [
         "AppImage",
         "deb"
