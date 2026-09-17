@@ -1,56 +1,131 @@
 # MoriXterm
 
-Modern Remote Terminal & Connection Manager — a cross-platform Electron workstation for SSH, SCP/SFTP, RDP, local terminals and remote files.
+[![Build desktop packages](https://github.com/mortenaho/morixterm/actions/workflows/desktop-build.yml/badge.svg)](https://github.com/mortenaho/morixterm/actions/workflows/desktop-build.yml)
 
-## Phase 1–2 status
+MoriXterm is a cross-platform remote terminal and connection manager built with Electron, React, TypeScript, xterm.js, and SQLite. It brings SSH shells, RDP launchers, local terminals, and remote file management into one desktop workspace.
 
-Working now:
+## Highlights
 
-- Secure Electron shell (`contextIsolation`, no Node in renderer, sandboxed preload API)
-- Desktop workstation UI: title bar, collapsible sidebar, tabs, status bar, command palette
-- Local terminal via `node-pty` + `xterm.js` (fit/resize, multi-tab)
-- Real SSH interactive shell via `ssh2` + xterm, passwords in OS credential store (keytar)
-- SQLite session persistence, favorites, search, create/edit/delete
-- Settings (terminal font/size/scrollback) and About screen
-- Single-instance lock and application menu
+- Interactive SSH terminals with resize, keepalive, reconnect, search, Unicode, links, WebGL fallback, and persistent tabs.
+- Compatibility negotiation for modern and legacy SSH servers, including older cipher, key-exchange, host-key, and MAC algorithms when required.
+- SSH host-key TOFU verification with persisted fingerprints and a changed-key man-in-the-middle warning.
+- Remote file manager over the authenticated SSH connection with SFTP browsing, upload, download, copy, move, rename, delete, directory creation, `chmod`, and `chown`.
+- Native RDP launcher using FreeRDP or the Windows Remote Desktop client when available.
+- Multiple local terminals powered by `node-pty`; usable WSL distributions are detected automatically on Windows and preferred over PowerShell/CMD.
+- Searchable session library with favorites, folders, pagination, reconnect state, and SQLite persistence.
+- Application password, manual lock, and configurable inactivity auto-lock while active terminal sessions continue running in the background.
+- Portable database backup and restore from Settings.
+- Windows NSIS installer plus Linux AppImage and Debian packages built by GitHub Actions.
 
-Deferred (stubs in UI): SFTP/SCP, transfer manager, embedded RDP canvas, snippets, command history, workspaces, tray.
+## Security and data persistence
 
-## RDP requirement
+MoriXterm uses Electron context isolation, a sandboxed renderer, a narrow typed preload API, single-instance locking, and hardened Electron fuses.
 
-RDP opens the native FreeRDP / system client (not embedded in the Electron window yet).
+Session metadata is stored in `morixterm.sqlite` under Electron's stable `userData` directory. Application updates reuse this database and run versioned migrations; they do not recreate or delete existing data. A timestamped backup is created before an upgrade migration.
 
-Linux:
+Passwords and application-lock secrets are stored in the operating system credential store through Keytar. They are never written to SQLite.
+
+Typical data locations:
+
+| Platform | Application data |
+| --- | --- |
+| Linux | `~/.config/morixterm/` |
+| Windows | `%APPDATA%\morixterm\` |
+| macOS | `~/Library/Application Support/morixterm/` |
+
+Use **Settings → Data → Backup database** before moving the application to another machine. Restoring a backup safely replaces the database and restarts the app.
+
+## Requirements
+
+- Node.js 22 or newer for development and packaging.
+- npm with the lockfile included in this repository.
+- A supported desktop environment for Electron.
+
+### Linux RDP
+
+RDP opens an installed native client. On Debian/Ubuntu, install FreeRDP:
+
 ```bash
 sudo apt install freerdp-x11
 ```
 
-That package provides `xfreerdp`. MoriXterm also looks for `xfreerdp3`, `wlfreerdp`, and `sdl-freerdp`. If no client is installed, Connect shows an install hint instead of a fake success toast.
+MoriXterm detects `xfreerdp3`, `xfreerdp`, `wlfreerdp`, and `sdl-freerdp`. If none is available, the application displays an installation hint instead of reporting a false connection.
 
-## Branding
+### Linux native dependencies
 
-Place the official MoriXterm logo (do not redesign) under `assets/branding/`:
+Keytar requires the Secret Service development package when dependencies or release packages are built:
 
-- `morixterm-logo.png`
-- `morixterm-icon.png`
-
-Temporary SVG/PNG marks ship until those files are replaced. Also mirrored for the renderer at `public/branding/`.
+```bash
+sudo apt install libsecret-1-dev
+```
 
 ## Development
 
+Install dependencies and start the development application:
+
 ```bash
-npm install
-npm run build
-npm test
+npm ci
 npm run dev
 ```
 
-Sessions live in the stable Electron `userData` directory in `morixterm.sqlite` (Linux: `~/.config/morixterm/`). Application updates reuse this database and run versioned migrations; they do not recreate or delete it. Before an upgrade migration, MoriXterm creates a timestamped `morixterm.sqlite.backup-v*.sqlite` copy in the same directory. Passwords stay in the OS credential store, keyed by session UUID, and are never written to SQLite.
+Available verification commands:
 
-On Windows, a usable WSL distribution is detected automatically when opening a local terminal and is preferred over PowerShell/CMD. If WSL is installed without a distribution, MoriXterm falls back to the normal Windows shell.
+```bash
+npm run typecheck
+npm run build
+npm test
+```
+
+`npm test` performs a production build and runs the Node test suites for session persistence, security controls, and application locking.
+
+## Packaging
+
+Build a package for the current operating system:
+
+```bash
+npm run package
+```
+
+Examples for explicit targets:
+
+```bash
+npm run package -- --linux AppImage deb --publish never
+npm run package -- --win nsis --publish never
+```
+
+Generated packages are written to `release/`.
+
+Every push to `main`, `feature/**`, or `fix/**` runs the desktop packaging workflow. Successful runs publish two downloadable artifacts for 30 days:
+
+- `MoriXterm-windows`: Windows NSIS installer (`.exe`)
+- `MoriXterm-linux`: Linux AppImage and Debian package (`.deb`)
+
+See [GitHub Actions](https://github.com/mortenaho/morixterm/actions/workflows/desktop-build.yml) for current builds and artifacts.
+
+## Project structure
+
+```text
+electron/             Electron main process, IPC, repositories, and services
+src/renderer/         React desktop interface and terminal workspace
+public/branding/      Renderer branding assets
+assets/branding/      Installer and package branding assets
+tests/                Security, persistence, and application-lock tests
+.github/workflows/    Windows and Linux packaging automation
+```
 
 ## Package identity
 
-- name: `morixterm`
-- productName: `MoriXterm`
-- appId: `com.morixterm.desktop`
+| Field | Value |
+| --- | --- |
+| Package | `morixterm` |
+| Product | `MoriXterm` |
+| Application ID | `com.morixterm.desktop` |
+| Current version | `0.1.0` |
+| License | MIT |
+| Repository | [github.com/mortenaho/morixterm](https://github.com/mortenaho/morixterm) |
+
+## Current limitations
+
+- RDP is launched in a native external client and is not embedded in the Electron workspace.
+- Transfer queue progress, cancellation, retry, and bounded concurrency remain planned.
+- Release binaries are currently provided as GitHub Actions artifacts rather than signed GitHub Releases.
