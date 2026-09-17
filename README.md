@@ -102,6 +102,18 @@ Every push to `main`, `feature/**`, or `fix/**` runs the desktop packaging workf
 
 See [GitHub Actions](https://github.com/mortenaho/morixterm/actions/workflows/desktop-build.yml) for current builds and artifacts.
 
+Pushing a stable semantic-version tag such as `v2.0.0` also creates a GitHub Release containing all desktop packages, `SHA256SUMS.txt`, and machine-readable `latest.json`. External sites and update services can always resolve the newest stable metadata through:
+
+```text
+https://github.com/mortenaho/morixterm/releases/latest/download/latest.json
+```
+
+The download website is deployed through GitHub Pages and reads the latest stable release directly from the GitHub Releases API:
+
+```text
+https://mortenaho.github.io/morixterm/
+```
+
 ## Project structure
 
 ```text
@@ -120,7 +132,7 @@ tests/                Security, persistence, and application-lock tests
 | Package | `morixterm` |
 | Product | `MoriXterm` |
 | Application ID | `com.morixterm.desktop` |
-| Current version | `0.1.0` |
+| Current version | `2.0.0` |
 | License | MIT |
 | Repository | [github.com/mortenaho/morixterm](https://github.com/mortenaho/morixterm) |
 
@@ -128,4 +140,4 @@ tests/                Security, persistence, and application-lock tests
 
 - RDP is launched in a native external client and is not embedded in the Electron workspace.
 - Transfer queue progress, cancellation, retry, and bounded concurrency remain planned.
-- Release binaries are currently provided as GitHub Actions artifacts rather than signed GitHub Releases.
+- Release packages are published automatically but are not yet code-signed.
