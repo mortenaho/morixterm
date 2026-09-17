@@ -12,12 +12,16 @@ import { registerSettingsIpc } from './ipc/settings.ipc.js';
 import { registerFoldersIpc } from './ipc/folders.ipc.js';
 import { registerFilesIpc } from './ipc/files.ipc.js';
 import { registerMonitorIpc } from './ipc/monitor.ipc.js';
+import { registerDatabaseIpc } from './ipc/database.ipc.js';
+import { registerLockIpc } from './ipc/lock.ipc.js';
 import { ptyManager } from './services/terminal/PtyManager.js';
 import { sshManager } from './services/ssh/SSHConnectionManager.js';
 import { rdpService } from './services/rdp/RdpService.js';
 import { logger } from './utils/logger.js';
 import { ipcMain } from 'electron';
 import { isTrustedRendererUrl, permitted, setTrustedRendererUrl } from './utils/ipcGuard.js';
+import { AppLockService } from './services/AppLockService.js';
+import { getAppLockPassword, saveAppLockPassword } from './services/credentials.js';
 
 const connectionSchema = z.object({
   host: z.string().min(1).max(255),
@@ -28,6 +32,7 @@ const connectionSchema = z.object({
 let mainWindow: BrowserWindow | null = null;
 let repository: SessionRepository | undefined;
 let settingsStore: SettingsStore | undefined;
+let databaseFilename: string | undefined;
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -154,7 +159,9 @@ if (gotLock) {
     });
     session.defaultSession.setPermissionCheckHandler((webContents, permission) =>
       Boolean(webContents) && clipboardPermissions.has(permission) && isTrustedRendererUrl(webContents!.getURL()));
-    repository = new SessionRepository(path.join(app.getPath('userData'), 'morixterm.sqlite'));
+    databaseFilename = path.join(app.getPath('userData'), 'morixterm.sqlite');
+    SessionRepository.applyPendingRestore(databaseFilename);
+    repository = new SessionRepository(databaseFilename);
     settingsStore = new SettingsStore(path.join(app.getPath('userData'), 'settings.json'));
     sshManager.configureKnownHosts(path.join(app.getPath('userData'), 'known-hosts.json'));
     registerSessions(repository);
@@ -164,7 +171,9 @@ if (gotLock) {
     registerSettingsIpc(settingsStore);
     registerFoldersIpc(repository);
   registerFilesIpc();
-  registerMonitorIpc();
+    registerMonitorIpc();
+    registerDatabaseIpc(repository, databaseFilename);
+    registerLockIpc(new AppLockService({ getPassword: getAppLockPassword, savePassword: saveAppLockPassword }));
     createWindow();
     logger.info('MoriXterm ready');
     app.on('activate', () => {

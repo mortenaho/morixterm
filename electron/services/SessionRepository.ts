@@ -1,18 +1,21 @@
 import { DatabaseSync } from 'node:sqlite';
-import { chmodSync, existsSync, mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, unlinkSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { listSessionsSchema, sessionFields, type Session, type SessionPage } from '../contracts/sessions.js';
 import type { Folder } from '../contracts/folders.js';
 import { randomUUID } from 'node:crypto';
 
 export class SessionRepository {
   private readonly db: DatabaseSync;
+  private readonly filename: string;
 
   constructor(filename: string) {
+    this.filename = filename;
     mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
     this.db = new DatabaseSync(filename);
     if (process.platform !== 'win32') chmodSync(filename, 0o600);
     this.db.exec('PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;');
+    this.db.exec('PRAGMA foreign_keys = ON; PRAGMA trusted_schema = OFF;');
     if (process.platform !== 'win32') {
       for (const file of [filename, `${filename}-wal`, `${filename}-shm`]) {
         if (existsSync(file)) chmodSync(file, 0o600);
@@ -20,6 +23,7 @@ export class SessionRepository {
     }
     const version = Number(this.db.prepare('PRAGMA user_version').get()?.user_version);
     if (version > 4) { this.db.close(); throw new Error('Unsupported database version'); }
+    if (version > 0 && version < 4) backupBeforeMigration(this.db, filename, version);
     if (version === 0) {
       this.db.exec(`BEGIN IMMEDIATE;
         CREATE TABLE sessions (
@@ -196,8 +200,51 @@ export class SessionRepository {
   }
 
   close(): void { this.db.close(); }
+
+  backup(destination: string): void {
+    if (resolve(destination) === resolve(this.filename)) throw new Error('Backup destination must differ from the database.');
+    backupDatabase(this.db, this.filename, destination);
+  }
+
+  static applyPendingRestore(filename: string): void {
+    const pending = `${filename}.restore-pending.sqlite`;
+    if (!existsSync(pending)) return;
+    if (!isSqliteFile(pending)) {
+      unlinkSync(pending);
+      throw new Error('The pending restore file is not a valid SQLite database.');
+    }
+    if (existsSync(filename)) {
+      const safety = `${filename}.backup-before-restore-${new Date().toISOString().replace(/[:.]/g, '-')}.sqlite`;
+      copyFileSync(filename, safety);
+      if (process.platform !== 'win32') chmodSync(safety, 0o600);
+    }
+    copyFileSync(pending, filename);
+    unlinkSync(pending);
+    if (process.platform !== 'win32') chmodSync(filename, 0o600);
+  }
 }
 
 function normalizeFolderPath(path: string): string {
   return path.trim().split('/').map(part => part.trim()).filter(Boolean).join('/');
+}
+
+function backupBeforeMigration(db: DatabaseSync, filename: string, version: number): void {
+  // WAL can contain the newest committed records, so checkpoint before copying
+  // the database. The backup is only created for an existing database that
+  // actually needs migration; normal application updates reuse the same file.
+  db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+  const backup = `${filename}.backup-v${version}-${new Date().toISOString().replace(/[:.]/g, '-')}.sqlite`;
+  backupDatabase(db, filename, backup);
+}
+
+function backupDatabase(db: DatabaseSync, filename: string, destination: string): void {
+  db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+  mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
+  copyFileSync(filename, destination);
+  if (process.platform !== 'win32') chmodSync(destination, 0o600);
+}
+
+export function isSqliteFile(filename: string): boolean {
+  try { return readFileSync(filename).subarray(0, 16).toString() === 'SQLite format 3\0'; }
+  catch { return false; }
 }

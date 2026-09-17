@@ -1,4 +1,4 @@
-import { FolderOpen, Monitor, PlusCircle, SquareTerminal } from 'lucide-react';
+import { ChevronRight, FolderOpen, Monitor, PlusCircle, SquareTerminal } from 'lucide-react';
 import type { Session } from '../../../../electron/contracts/sessions';
 
 export default function HomePage({
@@ -19,7 +19,7 @@ export default function HomePage({
   return (
     <div className="welcome-page">
       <section className="welcome-copy">
-        <div className="welcome-wordmark"><span>mori</span><strong>xterm</strong></div>
+        <img className="welcome-brand-image" src="/branding/morixterm-home-brand-v2.png" alt="MoriXterm"/>
         <h1>Remote sessions,<br/>made elegant.</h1>
         <p>SSH shells, RDP desktops, and file transfers —<br/>all in one focused workspace.</p>
         <div className="welcome-actions">
@@ -35,7 +35,7 @@ export default function HomePage({
         </div>
         <button className="welcome-feature" onClick={onNewTerminal}><span><SquareTerminal size={18}/></span><div><strong>Interactive shell</strong><small>Themes, search, and multi-tab terminals</small></div></button>
         <button className="welcome-feature" onClick={onNewRdp}><span><Monitor size={18}/></span><div><strong>Remote desktop</strong><small>Launch RDP sessions beside your shells</small></div></button>
-        <button className="welcome-feature" onClick={onOpenSessions}><span><FolderOpen size={18}/></span><div><strong>File browser</strong><small>Browse, upload, copy, and chmod remotely</small></div></button>
+        <button className="welcome-feature" onClick={onOpenSessions}><span><FolderOpen size={18}/></span><div><strong>File browser</strong><small>Browse, upload, copy, and chmod remotely</small></div><ChevronRight className="welcome-feature-arrow" size={18}/></button>
       </section>
     </div>
   );

@@ -1,12 +1,13 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { mkdtempSync, readFileSync, statSync, writeFileSync } = require('node:fs');
+const { chmodSync, mkdtempSync, readFileSync, statSync, writeFileSync } = require('node:fs');
 const { tmpdir } = require('node:os');
-const { join } = require('node:path');
+const { delimiter, join } = require('node:path');
 const { KnownHostsStore } = require('../dist-electron/services/ssh/KnownHostsStore.js');
 const { FreeRdpAdapter } = require('../dist-electron/services/rdp/RdpService.js');
 const { redact } = require('../dist-electron/utils/logger.js');
 const { transferFileSchema } = require('../dist-electron/contracts/files.js');
+const { compatibleSshAlgorithms } = require('../dist-electron/services/ssh/SSHConnectionManager.js');
 
 test('known SSH fingerprints persist in an owner-only file', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'morixterm-known-hosts-'));
@@ -41,8 +42,30 @@ test('FreeRDP receives passwords through stdin instead of process arguments', ()
   assert.equal(args.some(value => value.startsWith('/p:')), false);
 });
 
+test('FreeRDP command discovery uses the host PATH delimiter', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'morixterm-rdp-path-'));
+  const executable = join(directory, process.platform === 'win32' ? 'xfreerdp.exe' : 'xfreerdp');
+  writeFileSync(executable, '');
+  if (process.platform !== 'win32') chmodSync(executable, 0o700);
+  const previousPath = process.env.PATH;
+  process.env.PATH = `${directory}${delimiter}${previousPath ?? ''}`;
+  try {
+    assert.equal(new FreeRdpAdapter().detectClient(), executable);
+  } finally {
+    process.env.PATH = previousPath;
+  }
+});
+
 test('remote paths reject null bytes and extra IPC properties', () => {
   assert.equal(transferFileSchema.safeParse({ id: 'session', remotePath: '/tmp/file' }).success, true);
   assert.equal(transferFileSchema.safeParse({ id: 'session', remotePath: '/tmp/\0file' }).success, false);
   assert.equal(transferFileSchema.safeParse({ id: 'session', remotePath: '/tmp/file', localPath: '/etc/passwd' }).success, false);
+});
+
+test('SSH compatibility policy appends every runtime-supported algorithm', () => {
+  for (const category of ['kex', 'cipher', 'serverHostKey', 'hmac']) {
+    const policy = compatibleSshAlgorithms[category];
+    assert.equal(Array.isArray(policy), false);
+    assert.ok(policy.append.some(pattern => pattern.test('legacy-algorithm')));
+  }
 });

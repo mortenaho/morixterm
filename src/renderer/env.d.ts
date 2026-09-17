@@ -19,6 +19,16 @@ declare global {
         get: () => Promise<AppSettings>;
         set: (value: unknown) => Promise<AppSettings>;
       };
+      database: {
+        backup: () => Promise<{ ok: boolean; path?: string; message?: string }>;
+        restore: () => Promise<{ ok: boolean; message?: string }>;
+      };
+      lock: {
+        status: () => Promise<{ configured: boolean; locked: boolean }>;
+        setPassword: (value: { currentPassword?: string; newPassword: string }) => Promise<{ ok: boolean; message?: string }>;
+        lock: () => Promise<{ ok: boolean; message?: string }>;
+        unlock: (password: string) => Promise<{ ok: boolean; message?: string }>;
+      };
       sessions: SessionsApi;
       folders: FoldersApi;
       files: FilesApi;

@@ -9,6 +9,7 @@ import TabBar from './layouts/TabBar';
 import StatusBar from './layouts/StatusBar';
 import CommandPalette from './components/CommandPalette';
 import Toasts from './components/Toasts';
+import AppLockScreen from './components/AppLockScreen';
 import HomePage from './features/home/HomePage';
 import SessionsPage from './features/sessions/SessionsPage';
 import SessionModal from './features/sessions/SessionModal';
@@ -46,7 +47,10 @@ export default function App() {
   const [quickConnect, setQuickConnect] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
-  const [connectionError, setConnectionError] = useState<{ host: string; reason: string; session?: Session } | null>(null);
+  const [lockConfigured, setLockConfigured] = useState(false);
+  const [locked, setLocked] = useState(false);
+  const [lockReady, setLockReady] = useState(false);
+  const [connectionError, setConnectionError] = useState<{ host: string; reason: string; session?: Session; tabId?: string } | null>(null);
   const requestSequence = useRef(0);
 
   const closeWorkspaceTab = useCallback((id: string) => {
@@ -99,8 +103,42 @@ export default function App() {
   useEffect(() => { void refreshSessions(); }, [refreshSessions, revision]);
 
   useEffect(() => {
-    void window.mori.settings.get().then(setSettings).catch(() => undefined);
-  }, []);
+    void Promise.all([window.mori.settings.get(), window.mori.lock.status()])
+      .then(([savedSettings, lockStatus]) => {
+        setSettings(savedSettings);
+        setLockConfigured(lockStatus.configured);
+        setLocked(lockStatus.locked);
+      })
+      .catch(() => pushToast({ title: 'Security initialization failed', message: 'Could not load application lock state.', tone: 'error' }))
+      .finally(() => setLockReady(true));
+  }, [pushToast]);
+
+  const lockNow = useCallback(async () => {
+    const result = await window.mori.lock.lock();
+    if (!result.ok) {
+      pushToast({ title: 'Lock is not configured', message: result.message ?? 'Set a password in Settings first.', tone: 'error' });
+      setSettingsOpen(true);
+      return false;
+    }
+    setLocked(true);
+    return true;
+  }, [pushToast]);
+
+  useEffect(() => {
+    if (!lockReady || locked || !lockConfigured || settings.security.autoLockMinutes === 0) return;
+    let timer = 0;
+    const arm = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => { void lockNow(); }, settings.security.autoLockMinutes * 60_000);
+    };
+    const events: Array<keyof WindowEventMap> = ['pointerdown', 'keydown', 'mousemove', 'wheel', 'touchstart'];
+    for (const event of events) window.addEventListener(event, arm, { passive: true });
+    arm();
+    return () => {
+      window.clearTimeout(timer);
+      for (const event of events) window.removeEventListener(event, arm);
+    };
+  }, [lockConfigured, lockNow, lockReady, locked, settings.security.autoLockMinutes]);
 
   useEffect(() => window.mori.ssh.onState(payload => {
     const tabId = `ssh-${payload.id}`;
@@ -135,7 +173,7 @@ export default function App() {
     }
   }, [openTab, pushToast]);
 
-  const connectSession = useCallback(async (session: Session, password?: string) => {
+  const connectSession = useCallback(async (session: Session, password?: string, existingTabId?: string) => {
     if (session.kind === 'LOCAL') {
       await openLocalTerminal();
       return;
@@ -177,9 +215,10 @@ export default function App() {
       return;
     }
 
-    const id = crypto.randomUUID();
+    const id = existingTabId?.replace(/^ssh-/, '') || crypto.randomUUID();
+    const tabId = existingTabId ?? `ssh-${id}`;
     openTab({
-      id: `ssh-${id}`,
+      id: tabId,
       title: `${session.user}@${session.host}`,
       kind: 'ssh',
       sessionId: session.id,
@@ -197,6 +236,7 @@ export default function App() {
         host: `${session.user}@${session.host}:${session.port ?? 22}`,
         reason: friendlyError(error),
         session,
+        tabId,
       });
     }
   }, [closeTab, closeWorkspaceTab, openLocalTerminal, openTab, pushToast, updateTab]);
@@ -348,6 +388,7 @@ export default function App() {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (locked) return;
       if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'p') {
         event.preventDefault();
         setPaletteOpen(true);
@@ -371,15 +412,16 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [activeTabId, closeWorkspaceTab, openLocalTerminal, setPaletteOpen, toggleSidebar]);
+  }, [activeTabId, closeWorkspaceTab, locked, openLocalTerminal, setPaletteOpen, toggleSidebar]);
 
   useEffect(() => window.mori.onMenuCommand(command => {
+    if (locked) return;
     if (command === 'new-terminal') void openLocalTerminal();
     if (command === 'new-ssh') setCreating('SSH');
     if (command === 'new-rdp') setCreating('RDP');
     if (command === 'toggle-sidebar') toggleSidebar();
     if (command === 'about') setAboutOpen(true);
-  }), [openLocalTerminal, toggleSidebar]);
+  }), [locked, openLocalTerminal, toggleSidebar]);
 
   const commands = useMemo(() => [
     { id: 'new-terminal', label: 'New Terminal', run: () => void openLocalTerminal() },
@@ -389,17 +431,20 @@ export default function App() {
     { id: 'sessions', label: 'Open Sessions', run: () => openTab({ id: 'sessions', title: 'Sessions', kind: 'sessions' }) },
     { id: 'settings', label: 'Open Settings', run: () => setSettingsOpen(true) },
     { id: 'toggle-sidebar', label: 'Toggle Sidebar', run: () => toggleSidebar() },
+    { id: 'lock', label: 'Lock Workspace', run: () => void lockNow() },
     { id: 'about', label: 'About MoriXterm', run: () => setAboutOpen(true) },
-  ], [openLocalTerminal, openTab, toggleSidebar]);
+  ], [lockNow, openLocalTerminal, openTab, toggleSidebar]);
 
   return (
-    <div className="app-shell">
+    <>
+    <div className="app-shell" aria-hidden={locked || !lockReady}>
       <TitleBar
         onQuickConnect={() => setQuickConnect(true)}
         onNewTerminal={() => void openLocalTerminal()}
         onNewSsh={() => setCreating('SSH')}
         onSettings={() => setSettingsOpen(true)}
         onAbout={() => setAboutOpen(true)}
+        onLock={() => void lockNow()}
       />
       <div className="workspace-body">
         <Sidebar
@@ -476,12 +521,22 @@ export default function App() {
         </main>
       </div>
       <CommandPalette commands={commands}/>
-      <Toasts/>
       {creating && <SessionModal initialKind={creating} onCancel={() => setCreating(null)} onSave={persistSession}/>}
       {editing && <SessionModal initial={editing} onCancel={() => setEditing(null)} onSave={persistSession}/>}
       {quickConnect && <QuickConnectModal onCancel={() => setQuickConnect(false)} onConnect={handleQuickConnect}/>}
-      {settingsOpen && <ModalShell eyebrow="SETTINGS" title="Preferences" onClose={() => setSettingsOpen(false)}><SettingsPage compact settings={settings} onSave={async value => { const saved = await window.mori.settings.set(value); setSettings(saved); }}/></ModalShell>}
-      {aboutOpen && <ModalShell eyebrow="ABOUT" title="MoriXterm" onClose={() => setAboutOpen(false)}><AboutPage compact/></ModalShell>}
+      {settingsOpen && <ModalShell eyebrow="SETTINGS" title="Preferences" onClose={() => setSettingsOpen(false)}><SettingsPage
+        compact settings={settings} lockConfigured={lockConfigured}
+        onSave={async value => { const saved = await window.mori.settings.set(value); setSettings(saved); }}
+        onSetLockPassword={async (currentPassword, newPassword) => {
+          const result = await window.mori.lock.setPassword({ currentPassword, newPassword });
+          if (!result.ok) { pushToast({ title: 'Password not saved', message: result.message ?? 'Please retry.', tone: 'error' }); return false; }
+          setLockConfigured(true);
+          return true;
+        }}
+        onNotice={(title, message) => pushToast({ title, message, tone: 'success' })}
+        onError={(title, message) => pushToast({ title, message, tone: 'error' })}
+      /></ModalShell>}
+      {aboutOpen && <ModalShell eyebrow="ABOUT" onClose={() => setAboutOpen(false)}><AboutPage compact/></ModalShell>}
       {connectionError && (
         <ConnectionErrorModal
           host={connectionError.host}
@@ -489,8 +544,9 @@ export default function App() {
           onClose={() => setConnectionError(null)}
           onRetry={connectionError.session ? () => {
             const session = connectionError.session!;
+            const tabId = connectionError.tabId;
             setConnectionError(null);
-            void connectSession(session);
+            void connectSession(session, undefined, tabId);
           } : undefined}
           onEdit={connectionError.session ? () => {
             setEditing(connectionError.session!);
@@ -499,10 +555,21 @@ export default function App() {
         />
       )}
     </div>
+    {!lockReady && <div className="app-lock-screen" aria-label="Loading application security"/>}
+    {lockReady && locked && <AppLockScreen
+      onUnlock={async password => {
+        const result = await window.mori.lock.unlock(password);
+        if (result.ok) setLocked(false);
+        return result.ok;
+      }}
+      onError={message => pushToast({ title: 'Unlock failed', message, tone: 'error' })}
+    />}
+    <Toasts/>
+    </>
   );
 }
 
-function ModalShell({ eyebrow, title, onClose, children }: { eyebrow: string; title: string; onClose: () => void; children: ReactNode }) {
+function ModalShell({ eyebrow, title, onClose, children }: { eyebrow: string; title?: string; onClose: () => void; children: ReactNode }) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     dialog.current?.showModal();
@@ -510,7 +577,7 @@ function ModalShell({ eyebrow, title, onClose, children }: { eyebrow: string; ti
   }, []);
   return <dialog ref={dialog} className="session-dialog utility-dialog" onCancel={event => { event.preventDefault(); onClose(); }}>
     <div className="session-modal utility-modal">
-      <div className="modal-head"><div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2></div><button className="icon-button" type="button" aria-label={`Close ${title}`} onClick={onClose}>×</button></div>
+      <div className={`modal-head${title ? '' : ' modal-head-titleless'}`}><div><p className="eyebrow">{eyebrow}</p>{title && <h2>{title}</h2>}</div><button className="icon-button" type="button" aria-label={`Close ${title ?? eyebrow}`} onClick={onClose}>×</button></div>
       {children}
     </div>
   </dialog>;

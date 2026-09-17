@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { mkdtempSync, readFileSync } = require('node:fs');
+const { mkdtempSync, readdirSync, readFileSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
@@ -24,6 +24,42 @@ test('fresh database has no seed data and is a real SQLite file', t => {
   const { filename, repository } = setup(t);
   assert.equal(repository.list({}).total, 0);
   assert.equal(readFileSync(filename).subarray(0,16).toString(), 'SQLite format 3\0');
+});
+
+test('database migration preserves existing rows and creates a rollback backup', t => {
+  const directory = mkdtempSync(join(tmpdir(), 'morixterm-migration-test-'));
+  const filename = join(directory, 'sessions.sqlite');
+  const legacy = new DatabaseSync(filename);
+  legacy.exec(`
+    CREATE TABLE sessions (
+      id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, host TEXT NOT NULL,
+      port INTEGER, user TEXT NOT NULL, kind TEXT NOT NULL,
+      color TEXT NOT NULL, group_name TEXT NOT NULL,
+      favorite INTEGER NOT NULL, has_password INTEGER NOT NULL,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    CREATE TABLE folders (
+      id TEXT PRIMARY KEY NOT NULL, path TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    INSERT INTO sessions VALUES
+      ('11111111-1111-4111-8111-111111111111', 'Legacy', 'legacy.test', 22,
+       'admin', 'SSH', '#38d9c3', '', 0, 0,
+       '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');
+    PRAGMA user_version = 3;
+  `);
+  legacy.close();
+
+  const repository = new SessionRepository(filename);
+  t.after(() => repository.close());
+  const migrated = repository.get('11111111-1111-4111-8111-111111111111');
+  assert.equal(migrated.name, 'Legacy');
+  assert.equal(migrated.host, 'legacy.test');
+  assert.equal(migrated.platform, 'LINUX');
+  const reopened = new DatabaseSync(filename);
+  try { assert.equal(reopened.prepare('PRAGMA user_version').get().user_version, 4); }
+  finally { reopened.close(); }
+  assert.equal(readdirSync(directory).filter(name => name.includes('.backup-v3-')).length, 1);
 });
 
 test('SSH, RDP and local sessions persist after reopening, including edits', async t => {

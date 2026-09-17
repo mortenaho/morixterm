@@ -29,6 +29,18 @@ type LiveSession = {
   state: ConnectionState;
 };
 
+export const compatibleSshAlgorithms: NonNullable<ConnectConfig['algorithms']> = {
+  // ssh2 applies `append` after its modern runtime defaults. The regular
+  // expression only visits algorithms supported by the current Electron
+  // crypto build, so unavailable algorithms can never abort connection setup.
+  // Legacy KEX/ciphers/MACs and ssh-dss remain last-resort options for old
+  // appliances while modern peers continue to negotiate modern defaults.
+  kex: { append: [/.*/] },
+  cipher: { append: [/.*/] },
+  serverHostKey: { append: [/.*/] },
+  hmac: { append: [/.*/] },
+};
+
 export class SSHConnectionManager {
   private readonly sessions = new Map<string, LiveSession>();
   private readonly cpuSamples = new Map<string, { total: number; idle: number }>();
@@ -75,12 +87,7 @@ export class SSHConnectionManager {
               .then(callback)
               .catch(() => callback(false));
           },
-          algorithms: {
-            kex: ['curve25519-sha256', 'curve25519-sha256@libssh.org', 'ecdh-sha2-nistp256', 'diffie-hellman-group16-sha512', 'diffie-hellman-group14-sha256'],
-            cipher: ['chacha20-poly1305@openssh.com', 'aes256-gcm@openssh.com', 'aes128-gcm@openssh.com', 'aes256-ctr', 'aes128-ctr'],
-            serverHostKey: ['ssh-ed25519', 'ecdsa-sha2-nistp256', 'rsa-sha2-512', 'rsa-sha2-256'],
-            hmac: ['hmac-sha2-512-etm@openssh.com', 'hmac-sha2-256-etm@openssh.com', 'hmac-sha2-512', 'hmac-sha2-256'],
-          },
+          algorithms: compatibleSshAlgorithms,
         };
         const vaultPassword = await getPassword(input.sessionId);
         config.password = input.password || vaultPassword || undefined;

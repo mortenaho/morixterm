@@ -45,7 +45,9 @@ npm test
 npm run dev
 ```
 
-Sessions live in `morixterm.sqlite` under Electron `userData` (Linux: `~/.config/morixterm/`). Passwords stay in the OS credential store, keyed by session UUID.
+Sessions live in the stable Electron `userData` directory in `morixterm.sqlite` (Linux: `~/.config/morixterm/`). Application updates reuse this database and run versioned migrations; they do not recreate or delete it. Before an upgrade migration, MoriXterm creates a timestamped `morixterm.sqlite.backup-v*.sqlite` copy in the same directory. Passwords stay in the OS credential store, keyed by session UUID, and are never written to SQLite.
+
+On Windows, a usable WSL distribution is detected automatically when opening a local terminal and is preferred over PowerShell/CMD. If WSL is installed without a distribution, MoriXterm falls back to the normal Windows shell.
 
 ## Package identity
 

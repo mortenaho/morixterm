@@ -1,120 +1,78 @@
 import type { Terminal } from '@xterm/xterm';
 
 const C = {
-  reset: '\x1b[0m',
-  bold: '\x1b[1m',
-  line: '\x1b[38;2;104;112;163m',
-  cyan: '\x1b[38;2;28;221;224m',
-  green: '\x1b[38;2;102;214;115m',
-  blue: '\x1b[38;2;91;178;255m',
-  text: '\x1b[38;2;222;222;222m',
-  muted: '\x1b[38;2;142;142;142m',
+  reset: '\x1b[0m', bold: '\x1b[1m', border: '\x1b[38;2;52;72;82m',
+  cyan: '\x1b[38;2;45;209;214m', green: '\x1b[38;2;67;201;139m',
+  blue: '\x1b[38;2;75;151;255m', text: '\x1b[38;2;222;230;236m',
+  muted: '\x1b[38;2;118;132;145m',
 };
 
 export type WelcomeContext = {
-  version: string;
-  platform: string;
-  transport: 'pty' | 'ssh';
-  sessionName?: string;
-  host?: string;
-  user?: string;
-  port?: number;
+  version: string; platform: string; transport: 'pty' | 'ssh';
+  sessionName?: string; host?: string; user?: string; port?: number;
 };
 
 type Segment = { text: string; color?: string; bold?: boolean };
 
-function row(width: number, parts: Segment[] = []): string {
-  let remaining = width;
-  const clipped = parts
-    .map(part => {
-      const text = part.text.slice(0, Math.max(0, remaining));
-      remaining -= text.length;
-      return { ...part, text };
-    })
-    .filter(part => part.text.length > 0);
-  const visible = width - remaining;
-  const content = clipped.map(part => `${part.color ?? C.text}${part.bold ? C.bold : ''}${part.text}${C.reset}`).join('');
-  return `${C.line}|${C.reset}${content}${' '.repeat(Math.max(0, width - visible))}${C.line}|${C.reset}`;
+function paint({ text, color = C.text, bold = false }: Segment): string {
+  return `${color}${bold ? C.bold : ''}${text}${C.reset}`;
 }
 
-function divider(width: number, char = '='): string {
-  return `${C.line}+${char.repeat(width)}+${C.reset}`;
+function panelRow(width: number, left: Segment[], right: Segment[] = []): string {
+  const leftLength = left.reduce((sum, part) => sum + part.text.length, 0);
+  const rightLength = right.reduce((sum, part) => sum + part.text.length, 0);
+  const available = Math.max(0, width - 4);
+  const visibleLeft = leftLength + rightLength > available
+    ? left.map((part, index) => index === left.length - 1
+      ? { ...part, text: part.text.slice(0, Math.max(0, available - rightLength - (leftLength - part.text.length))) }
+      : part)
+    : left;
+  const visibleLeftLength = visibleLeft.reduce((sum, part) => sum + part.text.length, 0);
+  const gap = Math.max(1, width - 2 - visibleLeftLength - rightLength);
+  return `${C.border}│${C.reset} ${visibleLeft.map(paint).join('')}${' '.repeat(gap)}${right.map(paint).join('')} ${C.border}│${C.reset}`;
 }
 
-function infoRow(width: number, leftLabel: string, leftValue: string, rightLabel: string, rightValue: string): string {
-  const left = `  ${leftLabel.padEnd(7)} ${leftValue}`;
-  const gap = Math.max(2, Math.floor(width * .6) - left.length);
-  return row(width, [
-    { text: leftLabel ? `  ${leftLabel.padEnd(7)} ` : '', color: C.muted },
-    { text: leftValue, color: C.green, bold: true },
-    { text: ' '.repeat(gap) },
-    { text: `${rightLabel.padEnd(7)} `, color: C.muted },
-    { text: rightValue, color: C.blue, bold: true },
-  ]);
-}
-
-function centered(text: string, width: number): string {
-  const indent = Math.max(0, Math.floor((width - text.length) / 2));
-  return `${' '.repeat(indent)}${text}`;
-}
-
-const glyphs: Record<string, string[]> = {
-  M: ['█   █', '██ ██', '█ █ █', '█   █', '█   █'],
-  O: [' ███ ', '█   █', '█   █', '█   █', ' ███ '],
-  R: ['████ ', '█   █', '████ ', '█ █  ', '█  ██'],
-  I: ['█████', '  █  ', '  █  ', '  █  ', '█████'],
-  X: ['█   █', ' █ █ ', '  █  ', ' █ █ ', '█   █'],
-  T: ['█████', '  █  ', '  █  ', '  █  ', '  █  '],
-  E: ['█████', '█    ', '████ ', '█    ', '█████'],
-};
-
-function productWordmark(): string[] {
-  const name = 'MORIXTERM';
-  return Array.from({ length: 5 }, (_, rowIndex) => name
-    .split('')
-    .map(letter => glyphs[letter][rowIndex])
-    .join(' '));
+function border(width: number, top: boolean): string {
+  return `${C.border}${top ? '╭' : '╰'}${'─'.repeat(width)}${top ? '╮' : '╯'}${C.reset}`;
 }
 
 export function writeWelcomeBanner(term: Terminal, context: WelcomeContext): void {
-  const insideWidth = Math.max(1, Math.min(82, term.cols - 2));
+  const width = Math.max(1, Math.min(74, term.cols - 2));
   const isSsh = context.transport === 'ssh';
   const user = context.user ?? (isSsh ? 'remote' : 'local');
   const host = context.host ?? (isSsh ? 'remote-host' : 'localhost');
-  const port = context.port ? String(context.port) : 'local';
-  const now = new Intl.DateTimeFormat('en-CA', { dateStyle: 'medium', timeStyle: 'short', hour12: false }).format(new Date());
+  const port = context.port ? `:${context.port}` : '';
   const version = context.version.startsWith('v') ? context.version : `v${context.version}`;
-  const wordmark = productWordmark();
-  const status = isSsh ? 'SSH channel open' : 'Local shell open';
-  const security = isSsh ? 'SSH-2  ·  encrypted' : `${context.platform}  ·  local PTY`;
+  const target = `${user}@${host}${port}`;
+  const status = isSsh ? 'CONNECTED' : 'READY';
+  const transport = isSsh ? 'SSH-2 · encrypted' : `${context.platform} · local PTY`;
+  const session = context.sessionName?.trim() || (isSsh ? 'Remote session' : 'Local terminal');
 
   term.writeln('');
-  term.writeln(divider(insideWidth));
-  term.writeln(row(insideWidth));
-  for (const line of wordmark) term.writeln(row(insideWidth, [{ text: centered(line, insideWidth), color: C.cyan }]));
-  term.writeln(row(insideWidth));
-  const workspace = '   SSH workspace';
-  const tagline = 'Connect · Manage · Explore';
-  term.writeln(row(insideWidth, [
-    { text: workspace, color: C.muted },
-    { text: ' '.repeat(Math.max(3, insideWidth - workspace.length - tagline.length - version.length)) },
-    { text: tagline, color: C.text },
-    { text: '   ' },
-    { text: version, color: C.blue },
+  if (width < 32) {
+    term.writeln(`${paint({ text: 'MORIXTERM', color: C.cyan, bold: true })} ${paint({ text: status, color: C.green })}`);
+    term.writeln(paint({ text: target.slice(0, Math.max(1, term.cols - 1)), color: C.muted }));
+    term.writeln('');
+    return;
+  }
+  term.writeln(border(width, true));
+  term.writeln(panelRow(width, [
+    { text: 'MORI', color: C.cyan, bold: true },
+    { text: 'XTERM', color: C.blue, bold: true },
+  ], [{ text: version, color: C.muted }]));
+  term.writeln(panelRow(width, [
+    { text: '● ', color: C.green },
+    { text: status, color: C.green, bold: true },
+  ], width >= 46 ? [{ text: transport, color: C.muted }] : []));
+  term.writeln(`${C.border}│${C.reset} ${C.border}${'─'.repeat(Math.max(0, width - 2))}${C.reset} ${C.border}│${C.reset}`);
+  term.writeln(panelRow(width, [
+    { text: 'TARGET  ', color: C.muted },
+    { text: target, color: C.text, bold: true },
   ]));
-  term.writeln(divider(insideWidth));
-  const livePrefix = `     [ LIVE ]    ${status}`;
-  term.writeln(row(insideWidth, [
-    { text: '     [ ', color: C.muted },
-    { text: 'LIVE', color: C.green, bold: true },
-    { text: ' ]    ', color: C.muted },
-    { text: status, color: C.text },
-    { text: ' '.repeat(Math.max(3, insideWidth - livePrefix.length - security.length - 3)) },
-    { text: security, color: C.muted },
-  ]));
-  term.writeln(`${C.line}|${C.reset}  ${C.muted}${'-'.repeat(Math.max(0, insideWidth - 2))}${C.reset}${C.line}|${C.reset}`);
-  term.writeln(infoRow(insideWidth, 'user', user, 'port', port));
-  term.writeln(infoRow(insideWidth, 'host', host, 'time', now));
-  term.writeln(divider(insideWidth));
+  term.writeln(panelRow(width, [
+    { text: 'SESSION ', color: C.muted },
+    { text: session, color: C.cyan },
+  ], width >= 64 ? [{ text: 'Connect · Manage · Explore', color: C.muted }] : []));
+  term.writeln(border(width, false));
   term.writeln('');
 }

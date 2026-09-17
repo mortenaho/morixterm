@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import path from 'node:path';
 import { BrowserWindow } from 'electron';
 import { logger } from '../../utils/logger.js';
 
@@ -22,8 +23,8 @@ export interface IRdpAdapter {
 function which(command: string): string | undefined {
   if (command.includes('/') && existsSync(command)) return command;
   const pathEnv = process.env.PATH ?? '';
-  for (const dir of pathEnv.split(':')) {
-    const candidate = `${dir}/${command}`;
+  for (const dir of pathEnv.split(path.delimiter)) {
+    const candidate = path.join(dir, command);
     if (existsSync(candidate)) return candidate;
   }
   return undefined;

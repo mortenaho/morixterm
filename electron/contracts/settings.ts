@@ -9,6 +9,9 @@ export const appSettingsSchema = z.object({
     scrollback: z.number().int().min(10000).max(50000).default(10000),
     cursorBlink: z.boolean().default(true),
   }).default({}),
+  security: z.object({
+    autoLockMinutes: z.number().int().min(0).max(240).default(15),
+  }).default({}),
 }).default({});
 
 export type AppSettings = z.infer<typeof appSettingsSchema>;

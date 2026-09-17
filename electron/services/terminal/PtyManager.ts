@@ -1,7 +1,9 @@
 import * as pty from 'node-pty';
 import { BrowserWindow } from 'electron';
 import { existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import os from 'node:os';
+import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { logger } from '../../utils/logger.js';
 import type { MonitorStats } from '../../contracts/monitor.js';
@@ -12,8 +14,12 @@ export type PtyStartOptions = {
   cwd?: string;
 };
 
-function resolveShell(): string {
+export function resolveShell(): string {
   if (process.platform === 'win32') {
+    // Prefer a usable WSL distribution when available. `wsl.exe` alone can
+    // exist on Windows without any installed distribution, so check the
+    // distro list before selecting it as the default local terminal.
+    if (hasWslDistribution()) return findOnPath('wsl.exe') ?? 'wsl.exe';
     const candidates = [
       process.env.ComSpec,
       'pwsh.exe',
@@ -28,6 +34,33 @@ function resolveShell(): string {
     if (existsSync(shell)) return shell;
   }
   return '/bin/sh';
+}
+
+function findOnPath(command: string): string | undefined {
+  if (path.isAbsolute(command) && existsSync(command)) return command;
+  for (const directory of (process.env.PATH ?? '').split(path.delimiter)) {
+    if (!directory) continue;
+    const candidate = path.join(directory, command);
+    if (existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
+
+function hasWslDistribution(): boolean {
+  if (process.platform !== 'win32') return false;
+  const wsl = findOnPath('wsl.exe');
+  if (!wsl) return false;
+  try {
+    const output = execFileSync(wsl, ['--list', '--quiet'], {
+      encoding: 'utf8',
+      timeout: 2000,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    return output.split(/\r?\n/).some(line => line.replace(/\0/g, '').trim().length > 0);
+  } catch {
+    return false;
+  }
 }
 
 export class PtyManager {

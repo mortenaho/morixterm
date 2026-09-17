@@ -44,7 +44,7 @@ The work is intentionally split into independently verifiable slices. `[x]` mean
 - [ ] SSH PTY (`xterm-256color`), resize, keepalive and reconnect state machine.
 - [ ] Password, private key, encrypted key, agent and keyboard-interactive auth.
 - [ ] Host-key TOFU prompt and changed-key MITM warning.
-- [ ] Disconnect/reconnect without destroying the tab or terminal buffer.
+- [x] Disconnect/reconnect without destroying the tab or terminal buffer.
 
 ## Phase 5 — Remote files and transfers
 

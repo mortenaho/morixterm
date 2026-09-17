@@ -1,4 +1,9 @@
 declare module 'ssh2' {
+  export type AlgorithmList = string[] | {
+    append?: Array<string | RegExp>;
+    prepend?: Array<string | RegExp>;
+    remove?: Array<string | RegExp>;
+  };
   export interface ConnectConfig {
     host: string;
     port: number;
@@ -11,10 +16,10 @@ declare module 'ssh2' {
     hostHash?: string;
     hostVerifier?: (key: string, callback: (verified: boolean) => void) => void;
     algorithms?: {
-      kex?: string[];
-      cipher?: string[];
-      serverHostKey?: string[];
-      hmac?: string[];
+      kex?: AlgorithmList;
+      cipher?: AlgorithmList;
+      serverHostKey?: AlgorithmList;
+      hmac?: AlgorithmList;
     };
   }
   export interface ClientChannel {

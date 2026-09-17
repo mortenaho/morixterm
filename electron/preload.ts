@@ -16,6 +16,16 @@ contextBridge.exposeInMainWorld('mori', {
     get: () => ipcRenderer.invoke('settings:get'),
     set: (value: unknown) => ipcRenderer.invoke('settings:set', value),
   },
+  database: {
+    backup: () => ipcRenderer.invoke('database:backup'),
+    restore: () => ipcRenderer.invoke('database:restore'),
+  },
+  lock: {
+    status: () => ipcRenderer.invoke('lock:status'),
+    setPassword: (value: unknown) => ipcRenderer.invoke('lock:set-password', value),
+    lock: () => ipcRenderer.invoke('lock:lock'),
+    unlock: (password: string) => ipcRenderer.invoke('lock:unlock', password),
+  },
   sessions: {
     list: (value: unknown) => ipcRenderer.invoke('sessions:list', value),
     save: (value: unknown) => ipcRenderer.invoke('sessions:save', value),
