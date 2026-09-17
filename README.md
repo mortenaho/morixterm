@@ -102,7 +102,7 @@ Every push to `main`, `feature/**`, or `fix/**` runs the desktop packaging workf
 
 See [GitHub Actions](https://github.com/mortenaho/morixterm/actions/workflows/desktop-build.yml) for current builds and artifacts.
 
-Pushing a stable semantic-version tag such as `v2.0.0` also creates a GitHub Release containing all desktop packages, `SHA256SUMS.txt`, and machine-readable `latest.json`. External sites and update services can always resolve the newest stable metadata through:
+Pushing a stable semantic-version tag such as `v2.0.1` also creates a GitHub Release containing all desktop packages, `SHA256SUMS.txt`, and machine-readable `latest.json`. External sites and update services can always resolve the newest stable metadata through:
 
 ```text
 https://github.com/mortenaho/morixterm/releases/latest/download/latest.json
@@ -132,7 +132,7 @@ tests/                Security, persistence, and application-lock tests
 | Package | `morixterm` |
 | Product | `MoriXterm` |
 | Application ID | `com.morixterm.desktop` |
-| Current version | `2.0.0` |
+| Current version | `2.0.1` |
 | License | MIT |
 | Repository | [github.com/mortenaho/morixterm](https://github.com/mortenaho/morixterm) |
 
