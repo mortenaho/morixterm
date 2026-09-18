@@ -8,6 +8,11 @@ const { FreeRdpAdapter } = require('../dist-electron/services/rdp/RdpService.js'
 const { redact } = require('../dist-electron/utils/logger.js');
 const { transferFileSchema } = require('../dist-electron/contracts/files.js');
 const { compatibleSshAlgorithms } = require('../dist-electron/services/ssh/SSHConnectionManager.js');
+const packageManifest = require('../package.json');
+
+test('packaged file renderer retains the required Electron privileges', () => {
+  assert.equal(packageManifest.build.electronFuses.grantFileProtocolExtraPrivileges, true);
+});
 
 test('known SSH fingerprints persist in an owner-only file', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'morixterm-known-hosts-'));
