@@ -1,6 +1,6 @@
 {
   "name": "morixterm",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "desktopName": "com.morixterm.desktop",
   "description": "A modern workstation for SSH, RDP, terminals and remote files.",
   "main": "dist-electron/main.js",
