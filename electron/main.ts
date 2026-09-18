@@ -34,6 +34,10 @@ let repository: SessionRepository | undefined;
 let settingsStore: SettingsStore | undefined;
 let databaseFilename: string | undefined;
 
+app.setName('MoriXterm');
+if (process.platform === 'linux') app.setDesktopName('com.morixterm.desktop');
+if (process.platform === 'win32') app.setAppUserModelId('com.morixterm.desktop');
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -47,9 +51,9 @@ if (!gotLock) {
 
 function brandingIcon(): Electron.NativeImage | undefined {
   const candidates = [
-    path.join(__dirname, '../assets/branding/morixterm-icon.png'),
-    path.join(__dirname, '../assets/branding/morixterm-logo.png'),
-    path.join(__dirname, '../assets/branding/morixterm-logo.svg'),
+    path.join(app.getAppPath(), 'assets/branding/morixterm-icon.png'),
+    path.join(app.getAppPath(), 'assets/branding/morixterm-logo.png'),
+    path.join(app.getAppPath(), 'assets/branding/morixterm-logo.svg'),
   ];
   for (const file of candidates) {
     const image = nativeImage.createFromPath(file);
@@ -100,8 +104,9 @@ function buildMenu(window: BrowserWindow): void {
 
 function createWindow(): void {
   const icon = brandingIcon();
+  const rendererPath = path.join(app.getAppPath(), 'dist/index.html');
   const rendererUrl = app.isPackaged
-    ? pathToFileURL(path.join(__dirname, '../dist/index.html')).toString()
+    ? pathToFileURL(rendererPath).toString()
     : process.env.MORIXTERM_DEV_SERVER_URL ?? 'http://localhost:5173';
   setTrustedRendererUrl(rendererUrl);
   mainWindow = new BrowserWindow({
@@ -132,8 +137,15 @@ function createWindow(): void {
     if (!isTrustedRendererUrl(url)) event.preventDefault();
   });
   mainWindow.webContents.on('will-attach-webview', event => event.preventDefault());
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    logger.error(`Renderer failed to load (${errorCode}): ${errorDescription} [${validatedURL}]`);
+    mainWindow?.show();
+  });
   mainWindow.once('ready-to-show', () => mainWindow?.show());
-  void mainWindow.loadURL(rendererUrl);
+  void mainWindow.loadURL(rendererUrl).catch(error => {
+    logger.error(`Renderer load rejected: ${String(error)}`);
+    mainWindow?.show();
+  });
 
   mainWindow.on('closed', () => { mainWindow = null; });
 }
@@ -151,7 +163,6 @@ ipcMain.handle('connection:validate', (event, value: unknown) => permitted(event
 
 if (gotLock) {
   app.whenReady().then(() => {
-    app.setName('MoriXterm');
     if (process.platform !== 'win32') process.umask(0o077);
     const clipboardPermissions = new Set(['clipboard-read', 'clipboard-sanitized-write']);
     session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {

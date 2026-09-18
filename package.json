@@ -1,6 +1,7 @@
 {
   "name": "morixterm",
   "version": "2.0.1",
+  "desktopName": "com.morixterm.desktop",
   "description": "A modern workstation for SSH, RDP, terminals and remote files.",
   "main": "dist-electron/main.js",
   "author": {
@@ -79,11 +80,10 @@
     },
     "linux": {
       "maintainer": "MoriXterm <mortenaho@users.noreply.github.com>",
-      "target": [
-        "AppImage",
-        "deb"
-      ],
-      "icon": "assets/branding"
+      "target": ["AppImage", "deb"],
+      "icon": "assets/branding/morixterm-icon.png",
+      "syncDesktopName": true,
+      "category": "Network"
     },
     "win": {
       "target": "nsis",
