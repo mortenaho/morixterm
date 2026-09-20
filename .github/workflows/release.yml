@@ -110,7 +110,7 @@ jobs:
 
   windows:
     name: Windows EXE
-    runs-on: windows-2025
+    runs-on: windows-2022
     steps:
       - name: Checkout
         uses: actions/checkout@v4
