@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=MoriXterm
+Comment=Secure SSH, RDP and terminal workspace
+Exec=morixtrem
+Icon=morixtrem
+Terminal=false
+StartupWMClass=MoriXterm
+Categories=Development;System;Network;
+Keywords=SSH;RDP;Terminal;SFTP;
