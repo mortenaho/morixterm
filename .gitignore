@@ -1,15 +1,5 @@
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-.packages
 build/
-CMakeCache.txt
-CMakeFiles/
 cmake-build-*/
-compile_commands.json
-pubspec.lock
-*.iml
 .idea/
 .vscode/
-rdpdesk.log
-rdpdesk-last.log
+*.user

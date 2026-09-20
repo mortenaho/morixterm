@@ -1,0 +1,215 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing tag to build and publish (for example, v3)
+        required: true
+        type: string
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+env:
+  BUILD_TYPE: Release
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+
+jobs:
+  linux:
+    name: Linux AppImage and DEB
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          persist-credentials: false
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build g++ patchelf file desktop-file-utils \
+            qt6-base-dev qt6-declarative-dev qt6-declarative-dev-tools qt6-tools-dev qt6-tools-dev-tools \
+            libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0 \
+            libsecret-tools openssh-client sshpass libqt6svg6 zip unzip
+
+      - name: QML duplicate property preflight
+        run: python3 scripts/check-qml-duplicate-properties.py qml
+
+      - name: SQLite session migration smoke test
+        run: python3 scripts/smoke-session-migration.py
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DCMAKE_INSTALL_PREFIX=/usr -DMORIXTERM_VERSION=${RELEASE_TAG#v}
+
+      - name: QML syntax check
+        shell: bash
+        run: |
+          QMLFORMAT="$(command -v qmlformat || true)"
+          if [ -z "$QMLFORMAT" ] && [ -x /usr/lib/qt6/bin/qmlformat ]; then
+            QMLFORMAT=/usr/lib/qt6/bin/qmlformat
+          fi
+          if [ -z "$QMLFORMAT" ]; then
+            echo "qmlformat not found" >&2
+            exit 1
+          fi
+          while IFS= read -r -d '' file; do
+            "$QMLFORMAT" "$file" >/dev/null
+          done < <(find qml -name '*.qml' -print0)
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Package DEB
+        run: |
+          mkdir -p release
+          cd build
+          cpack -G DEB
+          mv ./*.deb ../release/
+
+      - name: Prepare AppDir
+        run: |
+          rm -rf AppDir
+          DESTDIR="$GITHUB_WORKSPACE/AppDir" cmake --install build
+
+      - name: Download linuxdeploy
+        run: |
+          curl -L --fail --retry 3 -o linuxdeploy-x86_64.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          curl -L --fail --retry 3 -o linuxdeploy-plugin-qt-x86_64.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-qt-x86_64.AppImage
+
+      - name: Build AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+          QML_SOURCES_PATHS: '${{ github.workspace }}/qml'
+          QMAKE: /usr/bin/qmake6
+          OUTPUT: 'MoriXterm-${{ env.RELEASE_TAG }}-Linux-x86_64.AppImage'
+        run: |
+          export PATH="$GITHUB_WORKSPACE:$PATH"
+          ./linuxdeploy-x86_64.AppImage \
+            --appdir AppDir \
+            --desktop-file packaging/linux/morixtrem.desktop \
+            --icon-file assets/morixtrem.png \
+            --plugin qt \
+            --output appimage
+          mv MoriXterm-*.AppImage "release/${OUTPUT}" 2>/dev/null || mv *.AppImage "release/${OUTPUT}"
+
+      - name: Upload Linux packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: release/*
+          if-no-files-found: error
+
+  windows:
+    name: Windows EXE
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          persist-credentials: false
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.*'
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          cache: true
+
+      - name: QML duplicate property preflight
+        shell: pwsh
+        run: python scripts/check-qml-duplicate-properties.py qml
+
+      - name: SQLite session migration smoke test
+        shell: pwsh
+        run: python scripts/smoke-session-migration.py
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          $releaseVersion = $env:RELEASE_TAG.TrimStart('v')
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 "-DMORIXTERM_VERSION=$releaseVersion"
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
+
+      - name: Deploy Qt runtime
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist/windows | Out-Null
+          Copy-Item build/bin/Release/morixtrem.exe dist/windows/morixtrem.exe
+          windeployqt --release --qmldir qml --dir dist/windows dist/windows/morixtrem.exe
+
+      - name: Bundle OpenSSH client
+        shell: pwsh
+        run: |
+          $release = Invoke-RestMethod -Headers @{ 'User-Agent' = 'MoriXterm' } -Uri 'https://api.github.com/repos/PowerShell/Win32-OpenSSH/releases/latest'
+          $asset = $release.assets | Where-Object { $_.name -eq 'OpenSSH-Win64.zip' } | Select-Object -First 1
+          if (-not $asset) { throw 'OpenSSH-Win64.zip was not found in the latest Win32-OpenSSH release.' }
+          $archive = Join-Path $env:RUNNER_TEMP 'OpenSSH-Win64.zip'
+          Invoke-WebRequest -Headers @{ 'User-Agent' = 'MoriXterm' } -Uri $asset.browser_download_url -OutFile $archive
+          $extract = Join-Path $env:RUNNER_TEMP 'OpenSSH-Win64'
+          Expand-Archive -Path $archive -DestinationPath $extract -Force
+          New-Item -ItemType Directory -Force dist/windows/openssh | Out-Null
+          Copy-Item "$extract/OpenSSH-Win64/*" dist/windows/openssh -Recurse -Force
+
+      - name: Build portable Windows ZIP
+        shell: pwsh
+        run: |
+          $releaseVersion = $env:RELEASE_TAG.TrimStart('v')
+          New-Item -ItemType Directory -Force release | Out-Null
+          Compress-Archive -Path dist/windows/* -DestinationPath "release/MoriXterm-$releaseVersion-Windows-x64-Portable.zip" -Force
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Windows installer
+        shell: pwsh
+        env:
+          MORIXTERM_VERSION: ${{ env.RELEASE_TAG }}
+        run: |
+          New-Item -ItemType Directory -Force release | Out-Null
+          if ($env:MORIXTERM_VERSION.StartsWith('v')) { $env:MORIXTERM_VERSION = $env:MORIXTERM_VERSION.Substring(1) }
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging/windows/MoriXterm.iss
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-package
+          path: release/*
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name, 'v')
+    needs: [linux, windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: release-assets/*

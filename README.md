@@ -1,54 +1,134 @@
-# MoriXterm
+# MoriXterm 3
 
-MoriXterm is a desktop workspace for saved SSH and RDP sessions. The active
-implementation is being rewritten with **Qt 6, C++20, and QML** on the `qt`
-branch.
+> A focused remote workspace for terminals, servers and files.
 
-The first Qt milestone includes:
+MoriXterm is a Qt 6 desktop client for developers, sysadmins and operators who want local shells, SSH, RDP and file operations in one fast workspace. It combines a real terminal, saved connection profiles, a two-pane transfer client and a security-first session manager without requiring a browser or a cloud account.
 
-- a native Qt Quick application shell;
-- searchable, persistent SSH/RDP bookmarks;
-- modal create/edit forms and confirmed deletion;
-- in-app toast notifications;
-- an SSH process console with interactive standard input;
-- secure RDP launching through `wlfreerdp` or `xfreerdp`;
-- no plaintext password persistence or password command-line arguments.
+[Website](website/index.html) · [Latest release](https://github.com/mortenaho/morixterm/releases/tag/v3) · [Security policy](SECURITY.md)
 
-The Flutter implementation remains in `lib/` while features are migrated and
-verified. See [docs/QT_MIGRATION.md](docs/QT_MIGRATION.md) for the parity plan.
+## What it supports
 
-## Requirements
+| Protocol | Best for | Included capabilities |
+| --- | --- | --- |
+| Local shell | Local development and administration | Native shell, terminal themes, zoom and clipboard |
+| SSH | Linux/Unix servers and network devices | Real PTY on Linux, host-key verification, key files, password vault and compatibility profiles |
+| RDP | Windows desktops and GUI applications | FreeRDP, resolution/scale/fullscreen controls, reconnect, clipboard and home-drive redirection |
+| SFTP | Secure file operations over SSH | Two-pane browser, multi-select, queued transfers and progress |
+| FTP / FTPS | Legacy and managed file services | Passive mode, optional TLS, concurrent transfers and overwrite control |
 
-- CMake 3.21 or newer
-- Qt 6.5 or newer with Quick and Quick Controls 2
-- a C++20 compiler
-- OpenSSH client for SSH connections
-- `wlfreerdp` or `xfreerdp` for RDP connections
+## Feature guide
 
-## Build and run
+### A terminal that stays out of the way
+
+- Local shell and SSH sessions live in tabs.
+- ANSI palettes: MoriXterm, Dracula, Nord, Solarized Dark, Monokai and Light.
+- Persistent font-size settings and Ctrl/Cmd + mouse-wheel zoom.
+- Theme-aware, coloured `user@host:path` prompts for local and remote shells.
+- Copy, paste, select-all and clear actions from the terminal context menu.
+- Sidebar widths can be resized by dragging; session folders can be reorganized by drag and drop.
+
+### SSH built for real work
+
+- Modern defaults are used unless a profile explicitly asks for compatibility.
+- Per-session Modern, Compatible and Legacy security profiles.
+- Per-session private-key path and non-default port support.
+- Dedicated `known_hosts` storage with first-use acceptance and changed-key warnings.
+- Host-key replacement is an explicit action, never a silent downgrade.
+- Remembered passwords use the operating-system credential vault. On Linux, install `libsecret`; on Windows, the Credential Manager backend is used.
+- Linux uses a real PTY. Windows releases bundle OpenSSH so the installer and portable ZIP do not depend on a separate PATH installation.
+
+### RDP with clipboard and display controls
+
+MoriXterm launches FreeRDP and exposes the controls that matter for a remote desktop:
+
+- Width, height, fullscreen and a configurable 100–300% desktop scale.
+- Bidirectional text clipboard through the RDP clipboard channel.
+- Home-directory drive redirection for moving files when supported by the server.
+- Automatic reconnect and certificate ignore/TOFU controls.
+- Clear status and connection diagnostics instead of an opaque black window.
+
+### File management and transfers
+
+- Local and SSH file manager panels with context menus.
+- Upload, download, new folder, rename, delete, copy, cut and paste.
+- Permissions and owner/group editors for Unix targets.
+- ZIP create and extract actions with progress feedback.
+- SFTP/FTP two-pane workspace with local and remote multi-selection.
+- Concurrent transfer queue, cancellation, overwrite policy and real curl progress.
+- Context menus remain inside the viewport and scroll when there are more actions than available space.
+
+### Profiles, organization and protection
+
+- Unified create/edit form for SSH, RDP, SFTP and FTP profiles.
+- SQLite profile database with session folders and recent-session metadata.
+- Application password, startup lock, idle auto-lock and one-click lock from the sidebar.
+- Locking hides the UI while active SSH, RDP and transfer processes continue running.
+- Settings are grouped into compact Security, Terminal and Storage tabs.
+
+## Installation
+
+### Windows
+
+Download either the installer or the portable archive from the [v3 release](https://github.com/mortenaho/morixterm/releases/tag/v3).
+
+- **Installer:** run `MoriXterm-3-Windows-x64-Setup.exe`.
+- **Portable:** extract `MoriXterm-3-Windows-x64-Portable.zip` and launch `morixtrem.exe`. The archive includes the Qt runtime and bundled OpenSSH client.
+
+### Ubuntu / Debian
+
+Download the `.deb` package and install it with:
 
 ```bash
-cmake -S . -B build -G Ninja
-cmake --build build
-./build/morixterm
+sudo apt install ./morixterm_3_amd64.deb
 ```
 
-Session metadata is stored in Qt's platform-specific application data
-directory as `sessions.json`. Passwords are deliberately excluded from that
-file. Authentication is delegated to the system connection client until the
-encrypted Qt credential vault milestone is complete.
+### AppImage
 
-## Source layout
-
-```text
-src/                    C++ application and service layer
-qml/                    Qt Quick user interface
-docs/QT_MIGRATION.md    migration scope and parity status
-lib/                    legacy Flutter implementation (migration reference)
+```bash
+chmod +x MoriXterm-v3-Linux-x86_64.AppImage
+./MoriXterm-v3-Linux-x86_64.AppImage
 ```
 
-## Security baseline
+For Linux SSH password injection and credential storage, install `sshpass` and `libsecret-tools`. For RDP, install `freerdp3-x11` (or a compatible `xfreerdp` package).
 
-SSH keeps OpenSSH host-key verification enabled with
-`StrictHostKeyChecking=ask`. RDP uses FreeRDP's `/cert:tofu` policy. MoriXterm
-does not silently accept changed host keys or certificates.
+## Build from source
+
+```bash
+./scripts/install-ubuntu.sh
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DMORIXTERM_VERSION=3
+cmake --build build --parallel
+./build/bin/morixtrem
+```
+
+Useful verification commands:
+
+```bash
+python3 scripts/check-qml-duplicate-properties.py qml
+python3 scripts/smoke-session-migration.py
+```
+
+### Technology
+
+MoriXterm is built with C++20, Qt 6, QML, SQLite, OpenSSH, FreeRDP and curl. The UI is native Qt Quick; no Electron runtime or hosted service is required.
+
+## Data and security
+
+Profiles are stored in `morixtrem.db` under the platform application-data directory. Passwords are not stored in SQLite. Saved credentials go through the operating-system credential provider. SSH host keys are kept in MoriXterm's dedicated known-hosts file, and legacy algorithms are opt-in per session.
+
+Read the full [SECURITY.md](SECURITY.md) before deploying MoriXterm in production.
+
+## Releases
+
+The GitHub Actions workflow builds Linux AppImage and DEB packages plus Windows installer and portable ZIP artifacts. A release can be created from a version tag:
+
+```bash
+git tag v3
+git push origin v3
+```
+
+## License and project information
+
+- Application: MoriXterm
+- Maintainer: mortenaho
+- Repository: https://github.com/mortenaho/morixterm
+- Release downloads: https://github.com/mortenaho/morixterm/releases

@@ -1,111 +1,101 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MoriXterm — Desktop SSH &amp; RDP workspace</title>
-  <meta
-    name="description"
-    content="A focused desktop client for SSH, RDP, interactive terminals, and remote file transfer."
-  />
-  <meta property="og:title" content="MoriXterm" />
-  <meta property="og:description" content="Connect. Manage. Explore." />
-  <meta property="og:image" content="assets/morixterm-screenshot.png" />
-  <meta name="theme-color" content="#070b10" />
-  <link rel="icon" type="image/png" href="assets/morixtrem-mark.png" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Sora:wght@500;600;700&display=swap"
-    rel="stylesheet"
-  />
-  <link rel="stylesheet" href="styles.css" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="MoriXterm — a focused Qt remote workspace for terminals, SSH, RDP and file operations.">
+  <meta name="theme-color" content="#09111a">
+  <title>MoriXterm — Remote work, without the noise</title>
+  <link rel="icon" href="../assets/morixtrem.png">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="atmosphere" aria-hidden="true"></div>
-  <div class="grid-fade" aria-hidden="true"></div>
-
-  <header class="topbar">
+  <div class="noise"></div>
+  <header class="site-header">
     <a class="brand" href="#top" aria-label="MoriXterm home">
-      <img src="assets/morixtrem-mark.png" alt="" width="28" height="28" />
-      <span>Mori<span class="x">X</span>term</span>
+      <img src="../assets/morixtrem-app.png" alt="" width="36" height="36">
+      <span>MORI<span>X</span>TERM</span>
     </a>
-    <nav aria-label="Primary">
-      <a href="#download">Download</a>
-      <a href="https://github.com/mortenaho/morixtrem" rel="noopener" target="_blank">GitHub</a>
+    <button class="menu-toggle" aria-expanded="false" aria-controls="site-nav">Menu</button>
+    <nav id="site-nav" class="site-nav" aria-label="Main navigation">
+      <a href="#protocols">Protocols</a>
+      <a href="#features">Features</a>
+      <a href="#security">Security</a>
+      <a href="#download" class="nav-cta">Download v3 <span>↗</span></a>
     </nav>
   </header>
 
   <main id="top">
-    <section class="hero" aria-labelledby="hero-title">
-      <div class="hero-intro">
-        <img
-          class="hero-logo"
-          src="assets/morixterm-brand.png"
-          alt="MoriXterm"
-          width="420"
-          height="420"
-        />
-        <h1 id="hero-title">Remote work, one workspace.</h1>
-        <p class="lede">
-          SSH, RDP, interactive terminals, and remote files — without leaving the desktop.
-        </p>
-
-        <div id="download" class="cta-row">
-          <a class="btn btn-primary" id="btn-windows" href="#" aria-disabled="true">
-            <span class="btn-label">Windows</span>
-            <span class="btn-meta" id="meta-windows">Fetching…</span>
-          </a>
-          <a class="btn btn-ghost" id="btn-linux" href="#" aria-disabled="true">
-            <span class="btn-label">Linux</span>
-            <span class="btn-meta" id="meta-linux">.deb · amd64</span>
-          </a>
+    <section class="hero section-shell">
+      <div class="hero-copy reveal">
+        <div class="eyebrow"><i></i> Native remote workspace · Version 3</div>
+        <h1>Remote work,<br><em>without the noise.</em></h1>
+        <p class="hero-lead">One calm, powerful desktop for terminals, servers, remote desktops and the files that connect them.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="https://github.com/mortenaho/morixterm/releases/tag/v3">Get MoriXterm <span>↗</span></a>
+          <a class="button button-ghost" href="#features">Explore features <span>↓</span></a>
         </div>
-
-        <p class="version-line" id="version-line" aria-live="polite">
-          Latest build loads from GitHub Releases.
-        </p>
+        <div class="hero-meta"><span class="status-dot"></span> Open source · Qt 6 · C++20 · Windows &amp; Linux</div>
       </div>
-
-      <figure class="hero-shot">
-        <img
-          src="assets/morixterm-screenshot.png"
-          alt="MoriXterm desktop app with SSH terminal and remote file browser"
-          width="1600"
-          height="960"
-        />
-      </figure>
+      <div class="hero-visual reveal delay-1" aria-label="MoriXterm interface preview">
+        <div class="glow"></div>
+        <div class="window-frame">
+          <div class="window-bar"><span class="window-dots"><i></i><i></i><i></i></span><span>MoriXterm <b>3</b></span><span class="window-actions">— □ ×</span></div>
+          <div class="app-preview">
+            <aside class="preview-sidebar">
+              <strong>Sessions <span>+</span></strong>
+              <small>USER SESSIONS <b>5</b></small>
+              <div class="session active"><i class="terminal-icon">›_</i><span><b>prod-api</b><small>deploy@api.example.com</small></span><em>SSH</em></div>
+              <div class="session"><i class="folder-icon">F</i><span><b>staging-web</b><small>admin@10.0.0.24</small></span><em>RDP</em></div>
+              <div class="session"><i class="folder-icon">S</i><span><b>storage</b><small>2 sessions</small></span><em>SFTP</em></div>
+              <div class="session faded"><i class="terminal-icon">›_</i><span><b>local shell</b><small>bash</small></span></div>
+            </aside>
+            <div class="preview-main">
+              <div class="preview-tabs"><span class="selected">prod-api <i>×</i></span><span>+ New session</span></div>
+              <div class="command-line"><span class="prompt-user">deploy</span><span class="prompt-at">@</span><span class="prompt-host">api-01</span><span class="prompt-path">:~$</span> tail -f service.log</div>
+              <div class="code-lines"><p><b>[12:42:08]</b> service health check <strong>✓</strong></p><p><b>[12:42:11]</b> connected to database pool</p><p><b>[12:42:14]</b> listening on <span>0.0.0.0:8080</span></p><p><b>[12:42:18]</b> deployment complete</p><p class="cursor-line">deploy@api-01:~$ <i></i></p></div>
+              <div class="preview-status"><span>● SSH session</span><span>Right click for context actions</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="float-chip chip-top"><span>⌘</span> Secure by default</div>
+        <div class="float-chip chip-bottom"><span>↗</span> Live session</div>
+      </div>
     </section>
 
-    <section class="strip" aria-labelledby="strip-title">
-      <h2 id="strip-title" class="visually-hidden">What you get</h2>
-      <ul class="strip-list">
-        <li>
-          <strong>Sessions</strong>
-          <span>SSH &amp; RDP in one place</span>
-        </li>
-        <li>
-          <strong>Terminal</strong>
-          <span>Themes, search, clipboard</span>
-        </li>
-        <li>
-          <strong>Files</strong>
-          <span>SCP / SFTP beside the shell</span>
-        </li>
-      </ul>
+    <section class="protocol-strip section-shell" id="protocols">
+      <div class="section-kicker">One workspace. Every connection.</div>
+      <div class="protocol-grid">
+        <article class="protocol-card featured"><div class="protocol-symbol">&gt;_</div><div><h3>SSH</h3><p>Real PTY · host keys · key files</p></div><span class="card-arrow">↗</span></article>
+        <article class="protocol-card"><div class="protocol-symbol rdp">▣</div><div><h3>RDP</h3><p>Scale · clipboard · reconnect</p></div><span class="card-arrow">↗</span></article>
+        <article class="protocol-card"><div class="protocol-symbol files">⇄</div><div><h3>SFTP</h3><p>Secure two-pane transfers</p></div><span class="card-arrow">↗</span></article>
+        <article class="protocol-card"><div class="protocol-symbol ftp">↳</div><div><h3>FTP / FTPS</h3><p>Passive mode · TLS · queues</p></div><span class="card-arrow">↗</span></article>
+      </div>
+    </section>
+
+    <section class="feature-section section-shell" id="features">
+      <div class="section-heading reveal"><div class="eyebrow"><i></i> Built for the long haul</div><h2>Everything you need.<br><em>Nothing you don't.</em></h2><p>MoriXterm keeps the high-frequency tools close and the complexity under control.</p></div>
+      <div class="feature-grid">
+        <article class="feature-card large reveal"><div class="feature-number">01</div><div class="feature-icon terminal-shape">›_</div><h3>A terminal that feels like yours</h3><p>Six built-in ANSI palettes, persistent font sizing, Ctrl + wheel zoom and theme-aware coloured prompts make every shell readable at a glance.</p><div class="feature-tags"><span>Local shell</span><span>SSH tabs</span><span>ANSI themes</span></div></article>
+        <article class="feature-card reveal delay-1"><div class="feature-number">02</div><div class="feature-icon">◈</div><h3>Files, finally in context</h3><p>Upload, download, archive, rename, chmod and chown without leaving your active connection.</p><div class="feature-tags"><span>ZIP</span><span>Progress</span></div></article>
+        <article class="feature-card reveal delay-2"><div class="feature-number">03</div><div class="feature-icon">⤢</div><h3>Remote desktops, your way</h3><p>RDP scale from 100–300%, fullscreen, clipboard sync and home-drive redirection.</p><div class="feature-tags"><span>RDP</span><span>Clipboard</span></div></article>
+        <article class="feature-card reveal"><div class="feature-number">04</div><div class="feature-icon">⌁</div><h3>Sessions that stay organized</h3><p>Folders, drag-and-drop grouping, recent sessions and one consistent create/edit form.</p><div class="feature-tags"><span>SQLite</span><span>Drag &amp; drop</span></div></article>
+        <article class="feature-card reveal delay-1"><div class="feature-number">05</div><div class="feature-icon">⌑</div><h3>Lock it in one click</h3><p>App password, startup lock, idle auto-lock and an instant sidebar lock without killing active sessions.</p><div class="feature-tags"><span>Vault-backed</span><span>Private</span></div></article>
+        <article class="feature-card accent-card reveal delay-2"><div class="feature-number">06</div><div class="feature-icon">⇩</div><h3>Ready when you are</h3><p>Native packages for Windows and Linux, plus a portable Windows ZIP that includes its SSH client.</p><a href="#download" class="inline-link">See downloads <span>↗</span></a></article>
+      </div>
+    </section>
+
+    <section class="security-section section-shell" id="security">
+      <div class="security-copy reveal"><div class="eyebrow"><i></i> Quietly secure</div><h2>Your keys.<br><em>Your control.</em></h2><p>MoriXterm is designed to make the safe path the easy path. Credentials stay in the operating system vault, host keys are handled deliberately and legacy SSH algorithms are opt-in per connection.</p><a class="text-link" href="../SECURITY.md">Read the security policy <span>↗</span></a></div>
+      <div class="security-list reveal delay-1"><div class="security-item"><span class="security-check">✓</span><div><h3>OS credential vault</h3><p>Remembered passwords use Windows Credential Manager or libsecret instead of SQLite.</p></div></div><div class="security-item"><span class="security-check">✓</span><div><h3>Host-key awareness</h3><p>Dedicated known-hosts storage, first-use acceptance and explicit changed-key replacement.</p></div></div><div class="security-item"><span class="security-check">✓</span><div><h3>No global weakening</h3><p>Compatible and legacy SSH algorithms are selected per session, never silently enabled everywhere.</p></div></div></div>
+    </section>
+
+    <section class="download-section section-shell" id="download">
+      <div class="download-panel reveal"><div><div class="eyebrow"><i></i> Version 3 is out</div><h2>Make remote work<br><em>feel local.</em></h2><p>Pick your platform and start with a workspace that stays focused.</p></div><div class="download-actions"><a class="download-button" href="https://github.com/mortenaho/morixterm/releases/download/v3/MoriXterm-3-Windows-x64-Setup.exe"><b>Windows installer</b><small>EXE · x64</small><span>↓</span></a><a class="download-button" href="https://github.com/mortenaho/morixterm/releases/download/v3/MoriXterm-3-Windows-x64-Portable.zip"><b>Windows portable</b><small>ZIP · no install</small><span>↓</span></a><a class="download-button" href="https://github.com/mortenaho/morixterm/releases/download/v3/MoriXterm-v3-Linux-x86_64.AppImage"><b>Linux AppImage</b><small>Universal · x86_64</small><span>↓</span></a><a class="download-button" href="https://github.com/mortenaho/morixterm/releases/download/v3/morixterm_3_amd64.deb"><b>Debian package</b><small>DEB · amd64</small><span>↓</span></a></div></div>
     </section>
   </main>
 
-  <footer>
-    <p>
-      © MoriXterm
-      <span class="sep" aria-hidden="true"></span>
-      <a href="https://github.com/mortenaho/morixtrem" rel="noopener" target="_blank">GitHub</a>
-      <span class="sep" aria-hidden="true"></span>
-      <a href="https://mortenaho.ir" rel="noopener" target="_blank">mortenaho.ir</a>
-    </p>
-  </footer>
-
-  <script src="download.js"></script>
+  <footer class="site-footer section-shell"><a class="brand" href="#top"><img src="../assets/morixtrem-app.png" alt="" width="28" height="28"><span>MORI<span>X</span>TERM</span></a><p>Remote work, without the noise.</p><div><a href="https://github.com/mortenaho/morixterm">GitHub ↗</a><a href="../README.md">Documentation ↗</a><span>© <b id="year"></b> mortenaho</span></div></footer>
+  <script src="script.js"></script>
 </body>
 </html>

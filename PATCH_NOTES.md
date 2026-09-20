@@ -1,0 +1,21 @@
+# MoriXterm 0.6 changes
+
+- Removed the persistent Rename / chmod / chown buttons from the file manager.
+- Rebuilt file actions around a styled context menu.
+- Added visual chmod permissions matrix and owner/group modal.
+- Added a professional Home dashboard.
+- Added a unified SSH/RDP session editor with password capture.
+- Added OS-native secure credential storage (Secret Service / Windows Credential Manager).
+- Added saved-session folders and drag-and-drop organization.
+- Added SQLite migrations for folder, SSH security profile, key path, credential state and recent usage.
+- Added per-session Modern / Compatible / Legacy SSH algorithm profiles.
+- Hardened host verification defaults and terminal escape-sequence limits.
+- Added secure SSH password pipe support with sshpass -d on Unix.
+- Added Windows terminal build fallback and wfreerdp discovery.
+- Added AppImage, DEB and Windows EXE release workflow.
+- Added About dialog and consistent themed QML controls.
+- Preserves setuid/setgid/sticky permission bits in the visual permission editor.
+- Added explicit SSH forwarding hardening and non-persistent ControlMaster reuse for the file manager.
+- Added progressive rate limiting for repeated failed app-unlock attempts.
+- Older FreeRDP clients never receive a saved password on the process command line; secure password injection requires `/args-from:stdin` support.
+- Added safe migration handling from the v0.5 SQLite schema.
