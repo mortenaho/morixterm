@@ -2,9 +2,12 @@
 """Smoke test the SQLite migration contract used by SessionStore 0.9.6."""
 import sqlite3
 import tempfile
+import os
 from pathlib import Path
 
-p = Path(tempfile.mkstemp(prefix="morixtrem-migration-", suffix=".db")[1])
+fd, temp_path = tempfile.mkstemp(prefix="morixtrem-migration-", suffix=".db")
+os.close(fd)
+p = Path(temp_path)
 try:
     db = sqlite3.connect(p)
     q = db.cursor()
