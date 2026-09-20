@@ -66,6 +66,7 @@ if(UNIX AND NOT APPLE)
 endif()
 
 if(WIN32)
+    target_compile_definitions(morixtrem PRIVATE _WIN32_WINNT=0x0A00 WINVER=0x0A00 NTDDI_VERSION=0x0A000006 NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(morixtrem PRIVATE Advapi32)
     set_target_properties(morixtrem PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
@@ -100,4 +101,15 @@ if(BUILD_TESTING AND UNIX AND NOT APPLE)
     target_link_libraries(rdp_session_test PRIVATE Qt6::Test Qt6::Gui)
     add_test(NAME rdp_session_test COMMAND rdp_session_test)
     set_tests_properties(rdp_session_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()
+
+if(BUILD_TESTING AND WIN32)
+    find_package(Qt6 6.4 REQUIRED COMPONENTS Test)
+    qt_add_executable(windows_pty_test
+        tests/PtyProcessWindowsTest.cpp
+        src/PtyProcess.cpp src/PtyProcess.h
+    )
+    target_compile_definitions(windows_pty_test PRIVATE _WIN32_WINNT=0x0A00 WINVER=0x0A00 NTDDI_VERSION=0x0A000006 NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_link_libraries(windows_pty_test PRIVATE Qt6::Test Qt6::Core)
+    add_test(NAME windows_pty_test COMMAND windows_pty_test)
 endif()

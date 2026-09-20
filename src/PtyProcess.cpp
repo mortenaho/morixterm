@@ -1,22 +1,61 @@
 #include "PtyProcess.h"
 
+#include <QDir>
+#include <QFileInfo>
+#include <QMetaObject>
+#include <QRegularExpression>
 #include <QStandardPaths>
+
+#include <exception>
+#include <utility>
 
 #ifdef Q_OS_WIN
 
+namespace {
+void closeHandle(HANDLE &handle)
+{
+    if (handle) {
+        CloseHandle(handle);
+        handle = nullptr;
+    }
+}
+
+QString windowsError(DWORD code)
+{
+    wchar_t buffer[512] {};
+    const DWORD count = FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                                       nullptr, code, 0, buffer, 512, nullptr);
+    return count ? QString::fromWCharArray(buffer, qsizetype(count)).trimmed()
+                 : QStringLiteral("Windows error %1").arg(code);
+}
+
+// CreateProcessW receives a command-line string, not an argv array. Quote each
+// argument with the Windows C runtime rules so paths containing spaces/quotes
+// are passed to OpenSSH unchanged and never interpreted by cmd.exe.
+QString quoteWindowsArgument(const QString &value)
+{
+    if (!value.isEmpty() && !value.contains(QRegularExpression(QStringLiteral("[\\s\"]"))))
+        return value;
+    QString result = QStringLiteral("\"");
+    int slashes = 0;
+    for (const QChar ch : value) {
+        if (ch == QLatin1Char('\\')) {
+            ++slashes;
+        } else if (ch == QLatin1Char('"')) {
+            result += QString(slashes * 2 + 1, QLatin1Char('\\')) + ch;
+            slashes = 0;
+        } else {
+            result += QString(slashes, QLatin1Char('\\')) + ch;
+            slashes = 0;
+        }
+    }
+    result += QString(slashes * 2, QLatin1Char('\\')) + QLatin1Char('"');
+    return result;
+}
+}
+
 PtyProcess::PtyProcess(QObject *parent) : QObject(parent)
 {
-    m_process.setProcessChannelMode(QProcess::MergedChannels);
-    connect(&m_process, &QProcess::readyRead, this, [this] {
-        const QByteArray data = m_process.readAll();
-        if (!data.isEmpty())
-            emit readyRead(data);
-    });
-    connect(&m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
-        emit errorOccurred(m_process.errorString());
-    });
-    connect(&m_process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
-            [this](int code, QProcess::ExitStatus) { emit exited(code); });
 }
 
 PtyProcess::~PtyProcess() { terminate(); }
@@ -24,32 +63,214 @@ PtyProcess::~PtyProcess() { terminate(); }
 bool PtyProcess::start(const QString &program, const QStringList &arguments, const QString &password)
 {
     terminate();
+
+    QString executable = program;
+    if (!QFileInfo(program).isAbsolute())
+        executable = QStandardPaths::findExecutable(program);
+    if (executable.isEmpty()) {
+        emit errorOccurred(QStringLiteral("SSH client was not found: %1").arg(program));
+        return false;
+    }
+
+    HANDLE inputRead = nullptr;
+    HANDLE inputWrite = nullptr;
+    HANDLE outputRead = nullptr;
+    HANDLE outputWrite = nullptr;
+    HPCON console = nullptr;
+    LPPROC_THREAD_ATTRIBUTE_LIST attributes = nullptr;
+    bool attributesInitialized = false;
+
+    auto fail = [&](const QString &message) {
+        if (attributesInitialized)
+            DeleteProcThreadAttributeList(attributes);
+        if (attributes)
+            HeapFree(GetProcessHeap(), 0, attributes);
+        if (console) {
+            // No reader thread exists yet on this failure path. Break the
+            // output pipe before closing ConPTY so its final frame cannot
+            // block on an undrained buffer.
+            closeHandle(outputRead);
+            ClosePseudoConsole(console);
+        }
+        closeHandle(inputRead);
+        closeHandle(inputWrite);
+        closeHandle(outputRead);
+        closeHandle(outputWrite);
+        emit errorOccurred(message);
+        return false;
+    };
+
+    if (!CreatePipe(&inputRead, &inputWrite, nullptr, 0)
+        || !CreatePipe(&outputRead, &outputWrite, nullptr, 0))
+        return fail(QStringLiteral("Could not create Windows terminal pipes: %1")
+                        .arg(windowsError(GetLastError())));
+
+    const COORD initialSize {static_cast<SHORT>(m_columns), static_cast<SHORT>(m_rows)};
+    const HRESULT result = CreatePseudoConsole(initialSize, inputRead, outputWrite, 0, &console);
+    if (FAILED(result))
+        return fail(QStringLiteral("Could not create Windows ConPTY terminal (Windows 10 1809+ required): %1")
+                        .arg(windowsError(HRESULT_CODE(result))));
+
+    SIZE_T attributeBytes = 0;
+    InitializeProcThreadAttributeList(nullptr, 1, 0, &attributeBytes);
+    attributes = static_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(HeapAlloc(GetProcessHeap(), 0, attributeBytes));
+    if (!attributes)
+        return fail(QStringLiteral("Could not allocate Windows terminal startup data."));
+    if (!InitializeProcThreadAttributeList(attributes, 1, 0, &attributeBytes))
+        return fail(QStringLiteral("Could not initialize Windows terminal: %1")
+                        .arg(windowsError(GetLastError())));
+    attributesInitialized = true;
+    if (!UpdateProcThreadAttribute(attributes, 0, PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
+                                   console, sizeof(console), nullptr, nullptr))
+        return fail(QStringLiteral("Could not attach Windows terminal: %1")
+                        .arg(windowsError(GetLastError())));
+
+    STARTUPINFOEXW startup {};
+    startup.StartupInfo.cb = sizeof(startup);
+    startup.lpAttributeList = attributes;
+    PROCESS_INFORMATION process {};
+    QStringList commandParts {quoteWindowsArgument(executable)};
+    for (const QString &argument : arguments)
+        commandParts << quoteWindowsArgument(argument);
+    std::wstring commandLine = commandParts.join(QLatin1Char(' ')).toStdWString();
+    commandLine.push_back(L'\0');
+    const std::wstring executablePath = QDir::toNativeSeparators(executable).toStdWString();
+    const BOOL created = CreateProcessW(executablePath.c_str(), commandLine.data(),
+                                        nullptr, nullptr, FALSE, EXTENDED_STARTUPINFO_PRESENT,
+                                        nullptr, nullptr, &startup.StartupInfo, &process);
+    const DWORD createError = created ? ERROR_SUCCESS : GetLastError();
+    DeleteProcThreadAttributeList(attributes);
+    HeapFree(GetProcessHeap(), 0, attributes);
+    attributes = nullptr;
+    attributesInitialized = false;
+    if (!created)
+        return fail(QStringLiteral("Could not start SSH in Windows terminal: %1")
+                        .arg(windowsError(createError)));
+
+    closeHandle(inputRead);
+    closeHandle(outputWrite);
+    closeHandle(process.hThread);
+    m_console = console;
+    m_inputWrite = inputWrite;
+    m_outputRead = outputRead;
+    m_processHandle = process.hProcess;
+    m_stopping = false;
+    m_running = true;
+    const auto generation = ++m_generation;
+
+    auto launchThreads = [this, generation] {
+        m_reader = std::thread([this, generation] {
+            char buffer[8192];
+            DWORD count = 0;
+            while (ReadFile(m_outputRead, buffer, sizeof(buffer), &count, nullptr) && count > 0) {
+                QByteArray data(buffer, qsizetype(count));
+                QMetaObject::invokeMethod(this, [this, generation, data = std::move(data)] {
+                    if (generation == m_generation && !m_stopping)
+                        emit readyRead(data);
+                }, Qt::QueuedConnection);
+            }
+        });
+        m_writer = std::thread([this] {
+            while (true) {
+                QByteArray data;
+                {
+                    std::unique_lock lock(m_writeMutex);
+                    m_writeReady.wait(lock, [this] { return m_stopping || !m_writeQueue.empty(); });
+                    if (m_stopping)
+                        break;
+                    data = std::move(m_writeQueue.front());
+                    m_writeQueue.pop_front();
+                }
+                qsizetype offset = 0;
+                while (offset < data.size() && !m_stopping) {
+                    DWORD written = 0;
+                    const DWORD amount = DWORD(qMin<qsizetype>(data.size() - offset, 8192));
+                    if (!WriteFile(m_inputWrite, data.constData() + offset, amount, &written, nullptr)
+                        || written == 0)
+                        break;
+                    offset += written;
+                }
+            }
+        });
+        m_waiter = std::thread([this, generation] {
+            WaitForSingleObject(m_processHandle, INFINITE);
+            DWORD code = 1;
+            GetExitCodeProcess(m_processHandle, &code);
+            m_running = false;
+            QMetaObject::invokeMethod(this, [this, generation, code] {
+                if (generation == m_generation && !m_stopping)
+                    emit exited(int(code));
+            }, Qt::QueuedConnection);
+        });
+    };
+    try {
+        launchThreads();
+    } catch (const std::exception &error) {
+        terminate();
+        emit errorOccurred(QStringLiteral("Could not start Windows terminal I/O: %1")
+                               .arg(QString::fromLocal8Bit(error.what())));
+        return false;
+    }
+
     if (!password.isEmpty())
-        emit errorOccurred(QStringLiteral("Saved-password injection for SSH is unavailable on the Windows fallback terminal; OpenSSH will prompt interactively."));
-    m_process.setProgram(program);
-    m_process.setArguments(arguments);
-    m_process.start();
-    return m_process.waitForStarted(3000);
+        emit readyRead(QByteArrayLiteral("\r\n[Windows SSH: type the password at the interactive prompt; saved-password auto-fill is unavailable.]\r\n"));
+    return true;
 }
 
 void PtyProcess::writeData(const QByteArray &data)
 {
-    if (m_process.state() != QProcess::NotRunning && !data.isEmpty())
-        m_process.write(data);
+    if (!m_running || data.isEmpty())
+        return;
+    {
+        std::lock_guard lock(m_writeMutex);
+        m_writeQueue.push_back(data);
+    }
+    m_writeReady.notify_one();
 }
 
-void PtyProcess::resize(int, int) {}
+void PtyProcess::resize(int rows, int columns)
+{
+    m_rows = qBound(1, rows, 32767);
+    m_columns = qBound(1, columns, 32767);
+    if (m_console)
+        ResizePseudoConsole(m_console, COORD {static_cast<SHORT>(m_columns), static_cast<SHORT>(m_rows)});
+}
 
 void PtyProcess::terminate()
 {
-    if (m_process.state() == QProcess::NotRunning)
-        return;
-    m_process.terminate();
-    if (!m_process.waitForFinished(500))
-        m_process.kill();
+    m_stopping = true;
+    ++m_generation;
+    m_running = false;
+    {
+        std::lock_guard lock(m_writeMutex);
+        m_writeQueue.clear();
+    }
+    m_writeReady.notify_all();
+    if (m_processHandle) {
+        DWORD code = 0;
+        if (GetExitCodeProcess(m_processHandle, &code) && code == STILL_ACTIVE)
+            TerminateProcess(m_processHandle, 1);
+    }
+    if (m_writer.joinable()) {
+        CancelSynchronousIo(m_writer.native_handle());
+        m_writer.join();
+    }
+    closeHandle(m_inputWrite);
+    if (m_console) {
+        ClosePseudoConsole(m_console);
+        m_console = nullptr;
+    }
+    if (m_waiter.joinable())
+        m_waiter.join();
+    if (m_reader.joinable()) {
+        CancelSynchronousIo(m_reader.native_handle());
+        m_reader.join();
+    }
+    closeHandle(m_outputRead);
+    closeHandle(m_processHandle);
 }
 
-bool PtyProcess::isRunning() const { return m_process.state() != QProcess::NotRunning; }
+bool PtyProcess::isRunning() const { return m_running; }
 
 #else
 

@@ -5,7 +5,13 @@
 #include <QStringList>
 
 #ifdef Q_OS_WIN
-#include <QProcess>
+#include <windows.h>
+
+#include <atomic>
+#include <condition_variable>
+#include <deque>
+#include <mutex>
+#include <thread>
 #endif
 
 class QSocketNotifier;
@@ -37,7 +43,21 @@ private slots:
 
 private:
 #ifdef Q_OS_WIN
-    QProcess m_process;
+    HPCON m_console = nullptr;
+    HANDLE m_processHandle = nullptr;
+    HANDLE m_inputWrite = nullptr;
+    HANDLE m_outputRead = nullptr;
+    std::thread m_reader;
+    std::thread m_writer;
+    std::thread m_waiter;
+    std::mutex m_writeMutex;
+    std::condition_variable m_writeReady;
+    std::deque<QByteArray> m_writeQueue;
+    std::atomic_bool m_running {false};
+    std::atomic_bool m_stopping {false};
+    std::atomic_uint64_t m_generation {0};
+    int m_rows = 24;
+    int m_columns = 80;
 #else
     int m_masterFd = -1;
     qint64 m_childPid = -1;

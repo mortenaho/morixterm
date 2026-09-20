@@ -35,7 +35,7 @@ MoriXterm is a Qt 6 desktop client for developers, sysadmins and operators who w
 - Dedicated `known_hosts` storage with first-use acceptance and changed-key warnings.
 - Host-key replacement is an explicit action, never a silent downgrade.
 - Remembered passwords use the operating-system credential vault. On Linux, install `libsecret`; on Windows, the Credential Manager backend is used.
-- Linux uses a real PTY. Windows releases bundle OpenSSH so the installer and portable ZIP do not depend on a separate PATH installation.
+- Linux uses a real PTY. Windows uses ConPTY for interactive SSH prompts and terminal resizing (Windows 10 1809 or newer). Windows releases bundle OpenSSH, so the installer and portable ZIP do not depend on a separate PATH installation. On Windows, type the SSH password at the terminal prompt; saved-password auto-fill is not yet available.
 
 ### RDP with clipboard and display controls
 
