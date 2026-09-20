@@ -65,6 +65,9 @@ jobs:
       - name: Build
         run: cmake --build build --parallel
 
+      - name: RDP argument tests
+        run: ctest --test-dir build --output-on-failure
+
       - name: Package DEB
         run: |
           mkdir -p release

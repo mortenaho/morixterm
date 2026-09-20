@@ -89,3 +89,15 @@ set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 set(CPACK_PACKAGE_FILE_NAME "MoriXterm-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
 include(CPack)
+
+include(CTest)
+if(BUILD_TESTING AND UNIX AND NOT APPLE)
+    find_package(Qt6 6.4 REQUIRED COMPONENTS Test)
+    qt_add_executable(rdp_session_test
+        tests/RdpSessionControllerTest.cpp
+        src/RdpSessionController.cpp src/RdpSessionController.h
+    )
+    target_link_libraries(rdp_session_test PRIVATE Qt6::Test Qt6::Gui)
+    add_test(NAME rdp_session_test COMMAND rdp_session_test)
+    set_tests_properties(rdp_session_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()

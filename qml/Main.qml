@@ -32,6 +32,7 @@ ApplicationWindow {
     property color accentSoft: "#2b3a34"
     property color danger: "#ff7078"
     property color warning: "#e3b85c"
+    property string rdpRemoteShare: String.fromCharCode(92, 92) + "tsclient" + String.fromCharCode(92) + "home"
 
     Settings {
         id: terminalSettings
@@ -45,6 +46,13 @@ ApplicationWindow {
         category: "UI"
         property real sessionsSidebarWidth: 225
         property real filePanelWidth: 360
+    }
+
+    Settings {
+        id: rdpSettings
+        category: "RDP"
+        property int defaultScale: 100
+        property string sharedFolder: ""
     }
 
     property string terminalTheme: terminalSettings.themeName
@@ -402,7 +410,7 @@ ApplicationWindow {
         domainField.text = ""
         widthField.text = "1440"
         heightField.text = "900"
-        scaleField.text = "100"
+        scaleField.text = String(Math.max(100, Math.min(300, rdpSettings.defaultScale)))
         fullscreenBox.checked = false
         ignoreCertBox.checked = false
         ftpTlsBox.checked = true
@@ -477,6 +485,16 @@ ApplicationWindow {
             editorError.text = sessionStore.lastError
             root.showToast(sessionStore.lastError.length ? sessionStore.lastError : "Could not save the connection.", "error")
             return
+        }
+        if (kind === "rdp" && editingSessionId > 0) {
+            for (var i = 0; i < tabsModel.count; ++i) {
+                if (Number(tabsModel.get(i).sessionId) === Number(id)) {
+                    tabsModel.setProperty(i, "rdpScale", scale)
+                    tabsModel.setProperty(i, "rdpWidth", width)
+                    tabsModel.setProperty(i, "rdpHeight", height)
+                    tabsModel.setProperty(i, "fullscreen", fullscreenBox.checked)
+                }
+            }
         }
         var connectionPassword = sessionPasswordField.text
         if (connectionPassword.length === 0 && rememberPasswordBox.checked)
@@ -724,8 +742,13 @@ ApplicationWindow {
                             UI.MTextField { id: widthField; Layout.fillWidth: true; placeholderText: "Width"; inputMethodHints: Qt.ImhDigitsOnly; onAccepted: saveConnectButton.clicked() }
                             UI.MTextField { id: heightField; Layout.fillWidth: true; placeholderText: "Height"; inputMethodHints: Qt.ImhDigitsOnly; onAccepted: saveConnectButton.clicked() }
                         }
-                        UI.MTextField { id: scaleField; Layout.fillWidth: true; placeholderText: "Scale % (100–300)"; inputMethodHints: Qt.ImhDigitsOnly; onAccepted: saveConnectButton.clicked() }
-                        Label { text: "RDP scale"; color: root.muted; font.pixelSize: 10; Layout.alignment: Qt.AlignVCenter }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Label { text: "Display zoom"; color: root.muted; Layout.fillWidth: true }
+                            UI.MTextField { id: scaleField; Layout.preferredWidth: 110; placeholderText: "100–300%"; inputMethodHints: Qt.ImhDigitsOnly; onAccepted: saveConnectButton.clicked() }
+                            Label { text: "%"; color: root.muted }
+                        }
+                        Label { text: "Magnifies the remote desktop. Change this profile's zoom here; reconnect to apply."; color: root.muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                         UI.MCheckBox { id: fullscreenBox; text: "Fullscreen" }
                         UI.MCheckBox { id: ignoreCertBox; text: "Ignore certificate validation (unsafe; use only for known legacy hosts)" }
                     }
@@ -1112,6 +1135,11 @@ ApplicationWindow {
     }
 
     // ---------- Settings ----------
+    FolderDialog {
+        id: rdpSharedFolderDialog
+        title: "Choose folder shared with RDP"
+        onAccepted: rdpSharedFolderField.text = selectedFolder.toString()
+    }
     Dialog {
         id: settingsDialog; modal: true; anchors.centerIn: parent; width: 650; height: 560; padding: 24; standardButtons: Dialog.NoButton
         background: Rectangle { radius: 18; color: root.panel2; border.color: root.border }
@@ -1121,6 +1149,8 @@ ApplicationWindow {
             newLockPassword.text=""; confirmLockPassword.text=""
             terminalThemeCombo.currentIndex=Math.max(0, root.terminalThemes.indexOf(root.terminalTheme))
             terminalFontSizeField.text=String(root.terminalFontSize)
+            rdpDefaultScaleField.text=String(Math.max(100, Math.min(300, rdpSettings.defaultScale)))
+            rdpSharedFolderField.text=rdpSettings.sharedFolder
             settingsTabs.currentIndex=0
         }
         contentItem: ColumnLayout {
@@ -1133,7 +1163,7 @@ ApplicationWindow {
                 property int currentIndex: 0
                 spacing: 8
                 Repeater {
-                    model: ["Security", "Terminal", "Storage"]
+                    model: ["Security", "Terminal", "RDP", "Storage"]
                     delegate: Button {
                         id: settingsTabButton
                         Layout.fillWidth: true
@@ -1218,6 +1248,42 @@ ApplicationWindow {
                             terminalSettings.themeName=selected
                             root.terminalTheme=selected
                             root.showToast("Terminal appearance updated.", "success")
+                        }
+                    }
+                    Item { Layout.fillHeight: true }
+                }
+
+                ColumnLayout {
+                    width: settingsPages.width
+                    spacing: 14
+                    Label { text: "Remote Desktop"; color: root.text; font.bold: true }
+                    Label { text: "Default display zoom for new RDP profiles. To change an existing profile, edit its Display zoom field, then disconnect and reconnect."; color: root.muted; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Label { text: "Default zoom"; color: root.muted; Layout.fillWidth: true }
+                        UI.MTextField { id: rdpDefaultScaleField; Layout.preferredWidth: 110; inputMethodHints: Qt.ImhDigitsOnly; placeholderText: "100–300" }
+                        Label { text: "%"; color: root.muted }
+                    }
+                    Label { text: "Shared host folder"; color: root.text; font.bold: true }
+                    Label { text: "Both sides can read and write this folder. In the remote desktop open " + root.rdpRemoteShare + ". Leave blank to share your home folder."; color: root.muted; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        UI.MTextField { id: rdpSharedFolderField; Layout.fillWidth: true; placeholderText: "Home folder (default)" }
+                        UI.MButton { text: "Browse…"; iconText: "▣"; onClicked: rdpSharedFolderDialog.open() }
+                    }
+                    Label { text: "Text and file clipboard is enabled in both directions when the FreeRDP client and remote server support it. If file paste is unavailable, use the shared folder instead. Server policy can block both channels."; color: root.muted; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    UI.MButton {
+                        text: "Apply RDP settings"
+                        primary: true
+                        onClicked: {
+                            var scale = Number(rdpDefaultScaleField.text)
+                            if (!isFinite(scale) || scale < 100 || scale > 300 || Math.floor(scale) !== scale) {
+                                root.showToast("RDP zoom must be a whole number between 100 and 300%.", "error")
+                                return
+                            }
+                            rdpSettings.defaultScale = scale
+                            rdpSettings.sharedFolder = rdpSharedFolderField.text.trim()
+                            root.showToast("RDP settings saved. Reconnect active sessions to apply.", "success")
                         }
                     }
                     Item { Layout.fillHeight: true }
@@ -2482,8 +2548,9 @@ ApplicationWindow {
 
                                 Rectangle {
                                     visible: kind === "rdp"
-                                    anchors.centerIn: parent; width: Math.min(parent.width - 80, 650); height: 365; radius: 10; color: root.panel2; border.color: root.border
+                                    anchors.centerIn: parent; width: Math.min(parent.width - 80, 650); height: Math.min(parent.height - 20, Math.max(420, rdpCardContent.implicitHeight + 56)); radius: 10; color: root.panel2; border.color: root.border
                                     ColumnLayout {
+                                        id: rdpCardContent
                                         anchors.fill: parent; anchors.margins: 28; spacing: 13
                                         Rectangle { width: 58; height: 58; radius: 16; color: root.accentSoft; Layout.alignment: Qt.AlignHCenter; Label { anchors.centerIn: parent; text: "R"; color: root.accent; font.pixelSize: 28; font.bold: true } }
                                         Label { text: title; color: root.text; font.pixelSize: 21; font.bold: true; Layout.alignment: Qt.AlignHCenter }
@@ -2492,15 +2559,16 @@ ApplicationWindow {
                                         Rectangle { Layout.fillWidth: true; height: 1; color: root.border }
                                         Label { Layout.fillWidth: true; text: rdpController.statusText; color: rdpController.running ? root.accent : root.muted; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; maximumLineCount: 5; elide: Text.ElideRight }
                                         Label { Layout.fillWidth: true; text: rdpController.clientBinary.length ? "Client: " + rdpController.clientBinary : "FreeRDP client not detected"; color: root.muted; font.pixelSize: 9; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideMiddle }
-                                        Label { Layout.fillWidth: true; text: "Clipboard: text + files both ways • Host files: \\tsclient\\home"; color: root.muted; font.pixelSize: 10; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap }
-                                        RowLayout { Layout.alignment: Qt.AlignHCenter; UI.MButton { text: "Reconnect"; enabled: !rdpController.running; onClicked: { var pw=sessionId>0?sessionStore.passwordForSession(sessionId):""; rdpController.start(host,user,pw,domain,port,rdpWidth,rdpHeight,fullscreen,ignoreCertificate,rdpScale) } } UI.MButton { text: "Disconnect"; danger: true; enabled: rdpController.running; onClicked: rdpController.stop() } }
+                                        Label { Layout.fillWidth: true; text: "Clipboard: text and files when the server permits • Zoom: " + rdpScale + "%"; color: root.muted; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap }
+                                        Label { Layout.fillWidth: true; text: "Shared folder: " + (rdpController.sharedFolderPath || "not connected") + " → " + root.rdpRemoteShare; color: root.muted; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap }
+                                        RowLayout { Layout.alignment: Qt.AlignHCenter; UI.MButton { text: "Reconnect"; enabled: !rdpController.running; onClicked: { var pw=sessionId>0?sessionStore.passwordForSession(sessionId):""; rdpController.start(host,user,pw,domain,port,rdpWidth,rdpHeight,fullscreen,ignoreCertificate,rdpScale,rdpSettings.sharedFolder) } } UI.MButton { text: "Disconnect"; danger: true; enabled: rdpController.running; onClicked: rdpController.stop() } }
                                     }
                                 }
 
                                 Component.onCompleted: {
                                     if (kind === "rdp") {
                                         root.activeTerminal=null
-                                        rdpController.start(host,user,password,domain,port,rdpWidth,rdpHeight,fullscreen,ignoreCertificate,rdpScale)
+                                        rdpController.start(host,user,password,domain,port,rdpWidth,rdpHeight,fullscreen,ignoreCertificate,rdpScale,rdpSettings.sharedFolder)
                                         if (password.length>0) tabsModel.setProperty(index,"password","")
                                     }
                                 }
