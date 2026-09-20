@@ -151,7 +151,15 @@ QStringList SshSecurity::commonOptions(int port,
 #endif
     addOption(args, QStringLiteral("HashKnownHosts=yes"));
     addOption(args, QStringLiteral("UpdateHostKeys=yes"));
+#ifdef Q_OS_WIN
+    // QProcess does not provide a console-backed PTY on Windows. Force the
+    // remote PTY so OpenSSH does not downgrade the session to a non-interactive
+    // command and emit the misleading "stdin is not a terminal" warning.
+    args << QStringLiteral("-tt");
+    addOption(args, QStringLiteral("VisualHostKey=no"));
+#else
     addOption(args, QStringLiteral("VisualHostKey=yes"));
+#endif
     addOption(args, QStringLiteral("ServerAliveInterval=30"));
     addOption(args, QStringLiteral("ServerAliveCountMax=3"));
     addOption(args, QStringLiteral("ConnectTimeout=10"));
