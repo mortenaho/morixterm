@@ -2,31 +2,59 @@ name: Build and Release
 
 on:
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: Existing tag to build and publish (for example, v3)
-        required: true
-        type: string
-  push:
-    tags:
-      - 'v*'
+
+concurrency:
+  group: morixterm-release
+  cancel-in-progress: false
+  queue: max
 
 permissions:
   contents: read
 
 env:
   BUILD_TYPE: Release
-  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
 
 jobs:
+  prepare:
+    name: Select next release version
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+      sha: ${{ steps.version.outputs.sha }}
+    steps:
+      - name: Require main branch
+        shell: bash
+        run: test "$GITHUB_REF" = 'refs/heads/main'
+
+      - name: Checkout main with tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select next version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$(python3 scripts/next_release_version.py)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   linux:
     name: Linux AppImage and DEB
+    needs: prepare
     runs-on: ubuntu-24.04
+    env:
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          ref: ${{ needs.prepare.outputs.sha }}
           persist-credentials: false
 
       - name: Install build dependencies
@@ -45,7 +73,7 @@ jobs:
         run: python3 scripts/smoke-session-migration.py
 
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DCMAKE_INSTALL_PREFIX=/usr -DMORIXTERM_VERSION=${RELEASE_TAG#v}
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DCMAKE_INSTALL_PREFIX=/usr -DMORIXTERM_VERSION=${RELEASE_VERSION}
 
       - name: QML syntax check
         shell: bash
@@ -113,12 +141,16 @@ jobs:
 
   windows:
     name: Windows EXE
+    needs: prepare
     runs-on: windows-2022
+    env:
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          ref: ${{ needs.prepare.outputs.sha }}
           persist-credentials: false
 
       - name: Install Qt
@@ -141,8 +173,7 @@ jobs:
       - name: Configure
         shell: pwsh
         run: |
-          $releaseVersion = $env:RELEASE_TAG.TrimStart('v')
-          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 "-DMORIXTERM_VERSION=$releaseVersion"
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 "-DMORIXTERM_VERSION=$env:RELEASE_VERSION"
 
       - name: Build
         shell: pwsh
@@ -177,9 +208,8 @@ jobs:
       - name: Build portable Windows ZIP
         shell: pwsh
         run: |
-          $releaseVersion = $env:RELEASE_TAG.TrimStart('v')
           New-Item -ItemType Directory -Force release | Out-Null
-          Compress-Archive -Path dist/windows/* -DestinationPath "release/MoriXterm-$releaseVersion-Windows-x64-Portable.zip" -Force
+          Compress-Archive -Path dist/windows/* -DestinationPath "release/MoriXterm-$env:RELEASE_VERSION-Windows-x64-Portable.zip" -Force
 
       - name: Install Inno Setup
         shell: pwsh
@@ -188,10 +218,9 @@ jobs:
       - name: Build Windows installer
         shell: pwsh
         env:
-          MORIXTERM_VERSION: ${{ env.RELEASE_TAG }}
+          MORIXTERM_VERSION: ${{ env.RELEASE_VERSION }}
         run: |
           New-Item -ItemType Directory -Force release | Out-Null
-          if ($env:MORIXTERM_VERSION.StartsWith('v')) { $env:MORIXTERM_VERSION = $env:MORIXTERM_VERSION.Substring(1) }
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging/windows/MoriXterm.iss
 
       - name: Upload Windows package
@@ -203,22 +232,55 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    if: startsWith(github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name, 'v')
-    needs: [linux, windows]
+    needs: [prepare, linux, windows]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+    env:
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      RELEASE_SHA: ${{ needs.prepare.outputs.sha }}
+      GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Checkout release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+
       - name: Download packages
         uses: actions/download-artifact@v4
         with:
           path: release-assets
           merge-multiple: true
 
+      - name: Verify complete release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "release-assets/MoriXterm-${RELEASE_VERSION}-Windows-x64-Setup.exe"
+          test -f "release-assets/MoriXterm-${RELEASE_VERSION}-Windows-x64-Portable.zip"
+          test -f "release-assets/MoriXterm-${RELEASE_TAG}-Linux-x86_64.AppImage"
+          compgen -G "release-assets/*_${RELEASE_VERSION}_amd64.deb" >/dev/null
+
+      - name: Create version tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_TAG}" >/dev/null; then
+            echo "Release tag ${RELEASE_TAG} already exists" >&2
+            exit 1
+          fi
+          git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            tag -a "${RELEASE_TAG}" "${RELEASE_SHA}" -m "MoriXterm ${RELEASE_TAG}"
+          git push origin "refs/tags/${RELEASE_TAG}"
+
       - name: Publish release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
-          generate_release_notes: true
-          fail_on_unmatched_files: true
-          files: release-assets/*
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "${RELEASE_TAG}" release-assets/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --verify-tag \
+            --title "MoriXterm ${RELEASE_TAG}" \
+            --generate-notes

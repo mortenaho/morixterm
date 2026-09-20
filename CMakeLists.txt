@@ -3,6 +3,8 @@ cmake_minimum_required(VERSION 3.21)
 set(MORIXTERM_VERSION "3" CACHE STRING "MoriXterm version")
 project(MoriXterm VERSION ${MORIXTERM_VERSION} LANGUAGES CXX)
 
+configure_file(src/Version.h.in ${CMAKE_CURRENT_BINARY_DIR}/generated/Version.h @ONLY)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
@@ -25,6 +27,8 @@ qt_add_executable(morixtrem
     src/SshSecurity.cpp src/SshSecurity.h
     src/SecurityHardening.cpp src/SecurityHardening.h
 )
+
+target_include_directories(morixtrem PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
 
 
 if(WIN32)
