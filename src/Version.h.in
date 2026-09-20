@@ -1,0 +1,3 @@
+#pragma once
+
+#define MORIXTERM_APP_VERSION "@PROJECT_VERSION@"

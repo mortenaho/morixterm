@@ -1,10 +1,10 @@
-# MoriXterm 3
+# MoriXterm
 
 > A focused remote workspace for terminals, servers and files.
 
 MoriXterm is a Qt 6 desktop client for developers, sysadmins and operators who want local shells, SSH, RDP and file operations in one fast workspace. It combines a real terminal, saved connection profiles, a two-pane transfer client and a security-first session manager without requiring a browser or a cloud account.
 
-[Website](website/index.html) · [Latest release](https://github.com/mortenaho/morixterm/releases/tag/v3) · [Security policy](SECURITY.md)
+[Website](website/index.html) · [Latest release](https://github.com/mortenaho/morixterm/releases/latest) · [Security policy](SECURITY.md)
 
 ## What it supports
 
@@ -69,10 +69,10 @@ MoriXterm launches FreeRDP and exposes the controls that matter for a remote des
 
 ### Windows
 
-Download either the installer or the portable archive from the [v3 release](https://github.com/mortenaho/morixterm/releases/tag/v3).
+Download either the installer or the portable archive from the [latest release](https://github.com/mortenaho/morixterm/releases/latest).
 
-- **Installer:** run `MoriXterm-3-Windows-x64-Setup.exe`.
-- **Portable:** extract `MoriXterm-3-Windows-x64-Portable.zip` and launch `morixtrem.exe`. The archive includes the Qt runtime and bundled OpenSSH client.
+- **Installer:** run the `MoriXterm-<version>-Windows-x64-Setup.exe` asset.
+- **Portable:** extract the `MoriXterm-<version>-Windows-x64-Portable.zip` asset and launch `morixtrem.exe`. The archive includes the Qt runtime and bundled OpenSSH client.
 - **RDP on Windows:** install FreeRDP 3 with `wfreerdp.exe` in `PATH`, or place `wfreerdp.exe` beside `morixtrem.exe` (or in a `freerdp` subfolder). Current Windows packages do not bundle FreeRDP.
 
 ### Ubuntu / Debian
@@ -80,14 +80,14 @@ Download either the installer or the portable archive from the [v3 release](http
 Download the `.deb` package and install it with:
 
 ```bash
-sudo apt install ./morixterm_3_amd64.deb
+sudo apt install ./morixterm_*_amd64.deb
 ```
 
 ### AppImage
 
 ```bash
-chmod +x MoriXterm-v3-Linux-x86_64.AppImage
-./MoriXterm-v3-Linux-x86_64.AppImage
+chmod +x ./MoriXterm-v*-Linux-x86_64.AppImage
+./MoriXterm-v*-Linux-x86_64.AppImage
 ```
 
 For Linux SSH password injection and credential storage, install `sshpass` and `libsecret-tools`. For RDP, install `freerdp3-x11` (or a compatible `xfreerdp` package).
@@ -96,7 +96,7 @@ For Linux SSH password injection and credential storage, install `sshpass` and `
 
 ```bash
 ./scripts/install-ubuntu.sh
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DMORIXTERM_VERSION=3
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ./build/bin/morixtrem
 ```
@@ -120,12 +120,9 @@ Read the full [SECURITY.md](SECURITY.md) before deploying MoriXterm in productio
 
 ## Releases
 
-The GitHub Actions workflow builds Linux AppImage and DEB packages plus Windows installer and portable ZIP artifacts. A release can be created from a version tag:
+Run **Actions → Build and Release → Run workflow** on `main`. The workflow chooses the next numbered tag (`v3`, `v4`, `v5`, …), builds the Linux AppImage and DEB plus the Windows installer and portable ZIP from the same commit, and then creates the tag and GitHub Release. The package versions and the version shown in the app come from that tag. The legacy Flutter workflow only uploads CI artifacts and does not publish GitHub Releases.
 
-```bash
-git tag v3
-git push origin v3
-```
+The workflow needs `contents: write` permission to push the tag and publish the release. A failed build does not consume a version; if publishing fails after the tag is pushed, inspect that tag before starting another release.
 
 ## License and project information
 

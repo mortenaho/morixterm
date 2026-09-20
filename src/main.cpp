@@ -7,6 +7,7 @@
 #include "SessionStore.h"
 #include "SshSecurity.h"
 #include "TerminalItem.h"
+#include "Version.h"
 
 #include <QCoreApplication>
 #include <QGuiApplication>
@@ -24,7 +25,7 @@ int main(int argc, char *argv[])
 
     QGuiApplication app(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("MoriXterm"));
-    QCoreApplication::setApplicationVersion(QStringLiteral("0.10.6"));
+    QCoreApplication::setApplicationVersion(QString::fromLatin1(MORIXTERM_APP_VERSION));
     QCoreApplication::setOrganizationName(QStringLiteral("mortenaho"));
     QCoreApplication::setOrganizationDomain(QStringLiteral("github.com/mortenaho"));
     QGuiApplication::setDesktopFileName(QStringLiteral("morixtrem"));

@@ -1,4 +1,4 @@
-name: Build and release desktop apps
+name: Legacy Flutter build checks
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-windows:
@@ -140,28 +140,3 @@ jobs:
           name: morixterm-debian-${{ github.sha }}
           path: morixterm_*_amd64.deb
           if-no-files-found: error
-
-  publish-release:
-    name: Publish GitHub Release
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/feature/')
-    needs: [build-windows, build-linux]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: morixterm-*
-          path: release-assets
-          merge-multiple: true
-
-      - name: Publish release assets
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "v0.1.0-build.${{ github.run_number }}" \
-            release-assets/* \
-            --repo "${{ github.repository }}" \
-            --title "morixterm v0.1.0 build ${{ github.run_number }}" \
-            --generate-notes \
-            --prerelease
