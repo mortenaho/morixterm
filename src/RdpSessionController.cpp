@@ -1,9 +1,15 @@
 #include "RdpSessionController.h"
 
+#include <QCoreApplication>
+#include <QDir>
+#include <QFileInfo>
+#include <QGuiApplication>
 #include <QHash>
 #include <QRegularExpression>
+#include <QScreen>
 #include <QStandardPaths>
 #include <QTimer>
+#include <QUrl>
 
 #include <utility>
 
@@ -219,7 +225,8 @@ bool RdpSessionController::start(const QString &host,
                                  int height,
                                  bool fullscreen,
                                  bool ignoreCertificate,
-                                 int scale)
+                                 int scale,
+                                 const QString &sharedFolder)
 {
     if (running()) {
         setStatus(QStringLiteral("An RDP session is already running in this tab"));
@@ -244,12 +251,28 @@ bool RdpSessionController::start(const QString &host,
     scale = qBound(100, scale, 300);
     m_targetDisplay = QStringLiteral("%1:%2").arg(cleanHost).arg(port);
 
+    QString folderPath = sharedFolder.trimmed();
+    if (folderPath.startsWith(QStringLiteral("file://"), Qt::CaseInsensitive))
+        folderPath = QUrl(folderPath).toLocalFile();
+    if (folderPath.isEmpty())
+        folderPath = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
+    const QFileInfo folderInfo(folderPath);
+    if (folderPath.contains(QLatin1Char('\n')) || folderPath.contains(QLatin1Char('\r'))
+        || !folderInfo.isDir() || !folderInfo.isReadable()) {
+        const QString message = QStringLiteral("RDP shared folder does not exist or is not readable: %1")
+                                    .arg(folderPath);
+        setStatus(message);
+        emit errorOccurred(message);
+        return false;
+    }
+    folderPath = QDir::cleanPath(folderInfo.absoluteFilePath());
+
     m_clientBinary = findClient();
     emit clientBinaryChanged();
     if (m_clientBinary.isEmpty()) {
 #ifdef Q_OS_WIN
         const QString message = QStringLiteral(
-            "FreeRDP was not found. Install FreeRDP 3 (wfreerdp) and ensure it is available in PATH.");
+            "FreeRDP was not found. Install FreeRDP 3 (wfreerdp) or place wfreerdp.exe beside MoriXterm.exe.");
 #else
         const QString message = QStringLiteral(
             "FreeRDP was not found. Install freerdp3-x11 (or freerdp-x11) and try again.");
@@ -270,20 +293,14 @@ bool RdpSessionController::start(const QString &host,
     if (!cleanDomain.isEmpty())
         args << QStringLiteral("/d:%1").arg(cleanDomain);
 
-#ifdef Q_OS_UNIX
-    // FreeRDP otherwise may attach to the X11 PRIMARY selection instead of the
-    // desktop clipboard. Explicitly selecting CLIPBOARD makes copy/paste work
-    // reliably from both the host and the remote desktop, including XWayland.
+    // FreeRDP's direction-to/files-to options only set the feature mask; they
+    // do not enable RedirectClipboard. use-selection explicitly enables the
+    // channel on every platform; CLIPBOARD is the desktop selection on X11.
     args << QStringLiteral("/clipboard:use-selection:CLIPBOARD,direction-to:all,files-to:all")
-#else
-    args << QStringLiteral("/clipboard:direction-to:all,files-to:all")
-#endif
          << QStringLiteral("+auto-reconnect")
          << QStringLiteral("/network:auto");
 
-    const QString homePath = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
-    if (!homePath.isEmpty())
-        args << QStringLiteral("/drive:home,%1").arg(homePath);
+    args << QStringLiteral("/drive:home,%1").arg(folderPath);
 
     // /gfx is useful on modern servers but is not required for a connection and
     // has caused compatibility problems with some older gateways. Let FreeRDP
@@ -292,10 +309,28 @@ bool RdpSessionController::start(const QString &host,
     args << QStringLiteral("/wm-class:MoriXterm-RDP");
 #endif
 
-    args << QStringLiteral("/scale-desktop:%1").arg(scale);
+    // /scale-desktop only advertises remote DPI and is ignored by many RDP
+    // servers. Smart sizing magnifies the actual rendered desktop. Keep the
+    // client window at the requested size and ask the server for fewer pixels.
+    QSize windowSize(width, height);
+    if (fullscreen && QGuiApplication::primaryScreen())
+        windowSize = QGuiApplication::primaryScreen()->size();
+    if (scale > 100) {
+        const int remoteWidth = qMax(200, qRound(windowSize.width() * 100.0 / scale));
+        const int remoteHeight = qMax(200, qRound(windowSize.height() * 100.0 / scale));
+        if (fullscreen) {
+            // In fullscreen FreeRDP treats smart-sizing's dimensions as the
+            // *remote* desktop size and scales that image to the monitor.
+            args << QStringLiteral("/smart-sizing:%1x%2").arg(remoteWidth).arg(remoteHeight);
+        } else {
+            args << QStringLiteral("/size:%1x%2").arg(remoteWidth).arg(remoteHeight)
+                 << QStringLiteral("/smart-sizing:%1x%2")
+                        .arg(windowSize.width()).arg(windowSize.height());
+        }
+    }
     if (fullscreen) {
         args << QStringLiteral("/f");
-    } else {
+    } else if (scale == 100) {
         args << QStringLiteral("/size:%1x%2").arg(width).arg(height)
              << QStringLiteral("+dynamic-resolution");
     }
@@ -307,6 +342,10 @@ bool RdpSessionController::start(const QString &host,
     else
         args << QStringLiteral("/cert:ignore"); // Legacy FreeRDP lacks TOFU support.
 
+    if (m_sharedFolderPath != folderPath) {
+        m_sharedFolderPath = folderPath;
+        emit sharedFolderPathChanged();
+    }
     m_outputBuffer.clear();
     m_process.setProgram(m_clientBinary);
     m_process.setProcessChannelMode(QProcess::MergedChannels);
@@ -371,6 +410,15 @@ void RdpSessionController::stop()
 QString RdpSessionController::findClient() const
 {
 #ifdef Q_OS_WIN
+    const QString appDirectory = QCoreApplication::applicationDirPath();
+    const QStringList localCandidates {
+        QDir(appDirectory).filePath(QStringLiteral("wfreerdp.exe")),
+        QDir(appDirectory).filePath(QStringLiteral("freerdp/wfreerdp.exe"))
+    };
+    for (const QString &candidate : localCandidates) {
+        if (QFileInfo(candidate).isFile())
+            return candidate;
+    }
     const QStringList candidates {
         QStringLiteral("wfreerdp.exe"),
         QStringLiteral("wfreerdp"),

@@ -65,6 +65,9 @@ jobs:
       - name: Build
         run: cmake --build build --parallel
 
+      - name: RDP argument tests
+        run: ctest --test-dir build --output-on-failure
+
       - name: Package DEB
         run: |
           mkdir -p release
@@ -164,6 +167,12 @@ jobs:
           Expand-Archive -Path $archive -DestinationPath $extract -Force
           New-Item -ItemType Directory -Force dist/windows/openssh | Out-Null
           Copy-Item "$extract/OpenSSH-Win64/*" dist/windows/openssh -Recurse -Force
+
+      - name: Verify Windows terminal and bundled SSH
+        shell: pwsh
+        run: |
+          $env:MORIXTERM_TEST_SSH_EXE = (Resolve-Path dist/windows/openssh/ssh.exe).Path
+          ctest --test-dir build -C ${{ env.BUILD_TYPE }} --output-on-failure
 
       - name: Build portable Windows ZIP
         shell: pwsh

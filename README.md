@@ -35,15 +35,15 @@ MoriXterm is a Qt 6 desktop client for developers, sysadmins and operators who w
 - Dedicated `known_hosts` storage with first-use acceptance and changed-key warnings.
 - Host-key replacement is an explicit action, never a silent downgrade.
 - Remembered passwords use the operating-system credential vault. On Linux, install `libsecret`; on Windows, the Credential Manager backend is used.
-- Linux uses a real PTY. Windows releases bundle OpenSSH so the installer and portable ZIP do not depend on a separate PATH installation.
+- Linux uses a real PTY. Windows uses ConPTY for interactive SSH prompts and terminal resizing (Windows 10 1809 or newer). Windows releases bundle OpenSSH, so the installer and portable ZIP do not depend on a separate PATH installation. On Windows, type the SSH password at the terminal prompt; saved-password auto-fill is not yet available.
 
 ### RDP with clipboard and display controls
 
 MoriXterm launches FreeRDP and exposes the controls that matter for a remote desktop:
 
-- Width, height, fullscreen and a configurable 100–300% desktop scale.
-- Bidirectional text clipboard through the RDP clipboard channel.
-- Home-directory drive redirection for moving files when supported by the server.
+- Width, height, fullscreen and 100–300% display zoom. Set a default in **Settings → RDP**; each RDP profile can override it. Zoom uses FreeRDP smart sizing and takes effect after reconnecting.
+- Bidirectional text and file clipboard through the RDP clipboard channel, when the client and remote server support it.
+- A configurable shared host folder in **Settings → RDP** (the home directory by default). On the remote desktop, open `\\tsclient\home` to move files in either direction. The remote server must allow drive redirection; this is also the fallback when file clipboard is unavailable.
 - Automatic reconnect and certificate ignore/TOFU controls.
 - Clear status and connection diagnostics instead of an opaque black window.
 
@@ -73,6 +73,7 @@ Download either the installer or the portable archive from the [v3 release](http
 
 - **Installer:** run `MoriXterm-3-Windows-x64-Setup.exe`.
 - **Portable:** extract `MoriXterm-3-Windows-x64-Portable.zip` and launch `morixtrem.exe`. The archive includes the Qt runtime and bundled OpenSSH client.
+- **RDP on Windows:** install FreeRDP 3 with `wfreerdp.exe` in `PATH`, or place `wfreerdp.exe` beside `morixtrem.exe` (or in a `freerdp` subfolder). Current Windows packages do not bundle FreeRDP.
 
 ### Ubuntu / Debian
 
