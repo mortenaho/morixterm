@@ -26,7 +26,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
           persist-credentials: false
 
       - name: Install build dependencies
@@ -115,7 +115,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
           persist-credentials: false
 
       - name: Install Qt
@@ -194,7 +194,7 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    if: startsWith(env.RELEASE_TAG, 'v')
+    if: startsWith(github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name, 'v')
     needs: [linux, windows]
     runs-on: ubuntu-24.04
     permissions:
@@ -209,7 +209,7 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.RELEASE_TAG }}
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: release-assets/*
