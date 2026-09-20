@@ -4,6 +4,7 @@
 #include <QStringList>
 
 namespace SshSecurity {
+QString executable(const QString &name);
 QString normalizeProfile(const QString &profile);
 QString controlPathTemplate();
 QString knownHostsFile();
@@ -32,6 +33,7 @@ public:
     QString controlPathTemplate() const { return SshSecurity::controlPathTemplate(); }
     QString knownHostsFile() const { return SshSecurity::knownHostsFile(); }
     QString lastError() const { return m_lastError; }
+    Q_INVOKABLE QString clientExecutable() const { return SshSecurity::executable(QStringLiteral("ssh")); }
 
     Q_INVOKABLE QStringList buildArguments(const QString &host,
                                            const QString &user,

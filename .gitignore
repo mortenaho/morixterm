@@ -1,7 +1,5 @@
 build/
 cmake-build-*/
-node_modules/
-release/
 .idea/
 .vscode/
 *.user

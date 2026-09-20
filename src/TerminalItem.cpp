@@ -414,7 +414,7 @@ void TerminalItem::startCommandWithPassword(const QString &program, const QStrin
     m_hostKeyFailureSignaled = false;
     m_promptApplied = false;
     m_promptActivityGeneration++;
-    if (QFileInfo(program).fileName().toLower() == QStringLiteral("ssh")) {
+    if (QFileInfo(program).completeBaseName().toLower() == QStringLiteral("ssh")) {
         m_promptShellName = QStringLiteral("/bin/bash");
         m_promptPending = true;
     }

@@ -270,7 +270,14 @@ bool RdpSessionController::start(const QString &host,
     if (!cleanDomain.isEmpty())
         args << QStringLiteral("/d:%1").arg(cleanDomain);
 
+#ifdef Q_OS_UNIX
+    // FreeRDP otherwise may attach to the X11 PRIMARY selection instead of the
+    // desktop clipboard. Explicitly selecting CLIPBOARD makes copy/paste work
+    // reliably from both the host and the remote desktop, including XWayland.
+    args << QStringLiteral("/clipboard:use-selection:CLIPBOARD,direction-to:all,files-to:all")
+#else
     args << QStringLiteral("/clipboard:direction-to:all,files-to:all")
+#endif
          << QStringLiteral("+auto-reconnect")
          << QStringLiteral("/network:auto");
 

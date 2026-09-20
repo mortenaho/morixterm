@@ -4,11 +4,29 @@
 #include <QFile>
 #include <QFileDevice>
 #include <QHash>
+#include <QCoreApplication>
+#include <QFileInfo>
 #include <QProcess>
 #include <QSet>
 #include <QStandardPaths>
 
 namespace {
+QString bundledExecutable(const QString &name)
+{
+#ifdef Q_OS_WIN
+    const QString appDir = QCoreApplication::applicationDirPath();
+    const QStringList candidates {
+        QDir(appDir).filePath(QStringLiteral("openssh/%1.exe").arg(name)),
+        QDir(appDir).filePath(QStringLiteral("%1.exe").arg(name))
+    };
+    for (const QString &candidate : candidates) {
+        if (QFileInfo::exists(candidate) && QFileInfo(candidate).isFile())
+            return QDir::toNativeSeparators(candidate);
+    }
+#endif
+    return QStandardPaths::findExecutable(name);
+}
+
 void addOption(QStringList &args, const QString &option)
 {
     args << QStringLiteral("-o") << option;
@@ -21,7 +39,7 @@ QSet<QString> queryAlgorithms(const QString &category)
         return cache.value(category);
 
     QSet<QString> result;
-    const QString ssh = QStandardPaths::findExecutable(QStringLiteral("ssh"));
+    const QString ssh = SshSecurity::executable(QStringLiteral("ssh"));
     if (!ssh.isEmpty()) {
         QProcess p;
         p.start(ssh, {QStringLiteral("-Q"), category});
@@ -49,6 +67,11 @@ void addAvailableAlgorithms(QStringList &args,
     if (!accepted.isEmpty())
         addOption(args, optionName + QStringLiteral("=+") + accepted.join(','));
 }
+}
+
+QString SshSecurity::executable(const QString &name)
+{
+    return bundledExecutable(name);
 }
 
 QString SshSecurity::normalizeProfile(const QString &profile)
@@ -236,7 +259,7 @@ bool SshSecurityController::replaceHostKey(const QString &host, int port)
     if (port < 1 || port > 65535)
         port = 22;
 
-    const QString keygen = QStandardPaths::findExecutable(QStringLiteral("ssh-keygen"));
+    const QString keygen = SshSecurity::executable(QStringLiteral("ssh-keygen"));
     if (keygen.isEmpty()) {
         setLastError(QStringLiteral("ssh-keygen was not found. Install the OpenSSH client package."));
         return false;

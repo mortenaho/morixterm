@@ -329,7 +329,7 @@ ApplicationWindow {
 
         if (normalizedKind === "ssh") {
             var args = sshSecurity.buildArguments(host, user, port, securityProfile || "modern", keyFile || "")
-            base.program = "ssh"
+            base.program = sshSecurity.clientExecutable()
             base.argsJson = JSON.stringify(args)
             base.controlPath = sshSecurity.controlPathTemplate
         }

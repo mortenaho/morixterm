@@ -26,7 +26,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          ref: ${{ env.RELEASE_TAG }}
           persist-credentials: false
 
       - name: Install build dependencies
@@ -115,7 +115,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          ref: ${{ env.RELEASE_TAG }}
           persist-credentials: false
 
       - name: Install Qt
@@ -152,6 +152,26 @@ jobs:
           Copy-Item build/bin/Release/morixtrem.exe dist/windows/morixtrem.exe
           windeployqt --release --qmldir qml --dir dist/windows dist/windows/morixtrem.exe
 
+      - name: Bundle OpenSSH client
+        shell: pwsh
+        run: |
+          $release = Invoke-RestMethod -Headers @{ 'User-Agent' = 'MoriXterm' } -Uri 'https://api.github.com/repos/PowerShell/Win32-OpenSSH/releases/latest'
+          $asset = $release.assets | Where-Object { $_.name -eq 'OpenSSH-Win64.zip' } | Select-Object -First 1
+          if (-not $asset) { throw 'OpenSSH-Win64.zip was not found in the latest Win32-OpenSSH release.' }
+          $archive = Join-Path $env:RUNNER_TEMP 'OpenSSH-Win64.zip'
+          Invoke-WebRequest -Headers @{ 'User-Agent' = 'MoriXterm' } -Uri $asset.browser_download_url -OutFile $archive
+          $extract = Join-Path $env:RUNNER_TEMP 'OpenSSH-Win64'
+          Expand-Archive -Path $archive -DestinationPath $extract -Force
+          New-Item -ItemType Directory -Force dist/windows/openssh | Out-Null
+          Copy-Item "$extract/OpenSSH-Win64/*" dist/windows/openssh -Recurse -Force
+
+      - name: Build portable Windows ZIP
+        shell: pwsh
+        run: |
+          $releaseVersion = $env:RELEASE_TAG.TrimStart('v')
+          New-Item -ItemType Directory -Force release | Out-Null
+          Compress-Archive -Path dist/windows/* -DestinationPath "release/MoriXterm-$releaseVersion-Windows-x64-Portable.zip" -Force
+
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup --no-progress -y
@@ -169,12 +189,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-package
-          path: release/*.exe
+          path: release/*
           if-no-files-found: error
 
   release:
     name: Publish GitHub Release
-    if: startsWith(github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name, 'v')
+    if: startsWith(env.RELEASE_TAG, 'v')
     needs: [linux, windows]
     runs-on: ubuntu-24.04
     permissions:

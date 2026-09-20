@@ -209,7 +209,7 @@ void FileManagerController::upload(const QUrl &localFileUrl)
         args << QStringLiteral("-r");
     args << localPath << (target() + QStringLiteral(":") + m_currentPath + QStringLiteral("/"));
 
-    runProcess(QStandardPaths::findExecutable(QStringLiteral("scp")), args,
+    runProcess(SshSecurity::executable(QStringLiteral("scp")), args,
                [this](int code, QProcess::ExitStatus status, const QByteArray &, const QByteArray &err) {
         const bool ok = status == QProcess::NormalExit && code == 0;
         finishAndRefresh(ok, ok ? QStringLiteral("Upload completed.") : QString::fromLocal8Bit(err).trimmed());
@@ -250,7 +250,7 @@ void FileManagerController::downloadEntry(int row, const QUrl &localFolderUrl)
         args << QStringLiteral("-r");
     args << (target() + QStringLiteral(":") + entry->path) << localFolder;
 
-    runProcess(QStandardPaths::findExecutable(QStringLiteral("scp")), args,
+    runProcess(SshSecurity::executable(QStringLiteral("scp")), args,
                [this](int code, QProcess::ExitStatus status, const QByteArray &, const QByteArray &err) {
         const bool ok = status == QProcess::NormalExit && code == 0;
         setBusy(false);
@@ -400,7 +400,7 @@ void FileManagerController::pasteEntry()
         : QStringLiteral("cp -a -- %1 %2").arg(shellQuote(source), shellQuote(destination));
 
     if (m_remote) {
-        runProcess(QStandardPaths::findExecutable(QStringLiteral("ssh")), sshBaseArgs() << target() << remoteCommand,
+        runProcess(SshSecurity::executable(QStringLiteral("ssh")), sshBaseArgs() << target() << remoteCommand,
                    [this, cut](int code, QProcess::ExitStatus status, const QByteArray &, const QByteArray &err) {
             const bool ok = status == QProcess::NormalExit && code == 0;
             if (ok && cut)
@@ -488,7 +488,7 @@ void FileManagerController::compressEntry(int row, const QString &archiveName)
             "zip -r %2 %3")
             .arg(remoteCdTarget(), shellQuote(archiveArg), shellQuote(entry->name));
 
-        runProcess(QStandardPaths::findExecutable(QStringLiteral("ssh")), sshBaseArgs() << target() << command,
+        runProcess(SshSecurity::executable(QStringLiteral("ssh")), sshBaseArgs() << target() << command,
                    [this](int code, QProcess::ExitStatus status, const QByteArray &, const QByteArray &err) {
             const bool ok = status == QProcess::NormalExit && code == 0;
             finishAndRefresh(ok, ok ? QStringLiteral("ZIP archive created.") : QString::fromLocal8Bit(err).trimmed());
@@ -568,7 +568,7 @@ void FileManagerController::extractZipEntry(int row, const QString &destinationF
              shellQuote(folder), validation, shellQuote(archiveArg));
 
     if (m_remote) {
-        runProcess(QStandardPaths::findExecutable(QStringLiteral("ssh")), sshBaseArgs() << target() << extractCommand,
+        runProcess(SshSecurity::executable(QStringLiteral("ssh")), sshBaseArgs() << target() << extractCommand,
                    [this](int code, QProcess::ExitStatus status, const QByteArray &, const QByteArray &err) {
             const bool ok = status == QProcess::NormalExit && code == 0;
             finishAndRefresh(ok, ok ? QStringLiteral("ZIP archive extracted.") : QString::fromLocal8Bit(err).trimmed());
@@ -807,7 +807,7 @@ void FileManagerController::refreshRemote()
         "find . -mindepth 1 -maxdepth 1 -printf 'E\\t%y\\t%f\\t%s\\t%m\\t%u\\t%g\\t%T@\\n'")
         .arg(remoteCdTarget());
 
-    runProcess(QStandardPaths::findExecutable(QStringLiteral("ssh")), sshBaseArgs() << target() << command,
+    runProcess(SshSecurity::executable(QStringLiteral("ssh")), sshBaseArgs() << target() << command,
                [this](int code, QProcess::ExitStatus status, const QByteArray &out, const QByteArray &err) {
         const bool ok = status == QProcess::NormalExit && code == 0;
         if (!ok) {
@@ -879,7 +879,7 @@ void FileManagerController::runFileOperation(const QString &localProgram, const 
         return;
 
     if (m_remote) {
-        runProcess(QStandardPaths::findExecutable(QStringLiteral("ssh")), sshBaseArgs() << target() << remoteCommand,
+        runProcess(SshSecurity::executable(QStringLiteral("ssh")), sshBaseArgs() << target() << remoteCommand,
                    [this, successMessage](int code, QProcess::ExitStatus status, const QByteArray &, const QByteArray &err) {
             const bool ok = status == QProcess::NormalExit && code == 0;
             finishAndRefresh(ok, ok ? successMessage : QString::fromLocal8Bit(err).trimmed());
