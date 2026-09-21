@@ -10,7 +10,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS Quick QuickControls2 Gui Sql)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Quick QuickControls2 Gui Sql Network)
 qt_standard_project_setup(REQUIRES 6.4)
 
 qt_add_executable(morixtrem
@@ -26,6 +26,11 @@ qt_add_executable(morixtrem
     src/CredentialStore.cpp src/CredentialStore.h
     src/SshSecurity.cpp src/SshSecurity.h
     src/SecurityHardening.cpp src/SecurityHardening.h
+    src/rdp/RdpConstants.h
+    src/rdp/RdpBuffer.h
+    src/rdp/RdpPdu.cpp src/rdp/RdpPdu.h
+    src/rdp/RdpClient.cpp src/rdp/RdpClient.h
+    src/rdp/RdpViewItem.cpp src/rdp/RdpViewItem.h
 )
 
 target_include_directories(morixtrem PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
@@ -58,11 +63,14 @@ qt_add_resources(morixtrem morixtrem_resources
         assets/icons/archive.svg
 )
 
+target_include_directories(morixtrem PRIVATE src)
+
 target_link_libraries(morixtrem PRIVATE
     Qt6::Quick
     Qt6::QuickControls2
     Qt6::Gui
     Qt6::Sql
+    Qt6::Network
 )
 
 if(UNIX AND NOT APPLE)
@@ -89,7 +97,7 @@ set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Secure SSH, RDP and terminal workspace")
 set(CPACK_PACKAGE_CONTACT "mortenaho")
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "mortenaho")
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "openssh-client, curl, libsecret-tools, sshpass, zip, unzip, freerdp3-x11 | freerdp-x11, libqt6svg6, libqt6sql6-sqlite, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-dialogs, qml6-module-qtquick-layouts")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "openssh-client, curl, libsecret-tools, sshpass, zip, unzip, libqt6svg6, libqt6sql6-sqlite, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-dialogs, qml6-module-qtquick-layouts")
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 set(CPACK_PACKAGE_FILE_NAME "MoriXterm-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
@@ -101,10 +109,26 @@ if(BUILD_TESTING AND UNIX AND NOT APPLE)
     qt_add_executable(rdp_session_test
         tests/RdpSessionControllerTest.cpp
         src/RdpSessionController.cpp src/RdpSessionController.h
+        src/rdp/RdpPdu.cpp src/rdp/RdpPdu.h
+        src/rdp/RdpClient.cpp src/rdp/RdpClient.h
+        src/rdp/RdpConstants.h
+        src/rdp/RdpBuffer.h
     )
-    target_link_libraries(rdp_session_test PRIVATE Qt6::Test Qt6::Gui)
+    target_include_directories(rdp_session_test PRIVATE src)
+    target_link_libraries(rdp_session_test PRIVATE Qt6::Test Qt6::Gui Qt6::Network)
     add_test(NAME rdp_session_test COMMAND rdp_session_test)
     set_tests_properties(rdp_session_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    qt_add_executable(rdp_pdu_test
+        tests/rdp/RdpPduTest.cpp
+        src/rdp/RdpPdu.cpp src/rdp/RdpPdu.h
+        src/rdp/RdpConstants.h
+        src/rdp/RdpBuffer.h
+    )
+    target_include_directories(rdp_pdu_test PRIVATE src)
+    target_link_libraries(rdp_pdu_test PRIVATE Qt6::Test)
+    add_test(NAME rdp_pdu_test COMMAND rdp_pdu_test)
+    set_tests_properties(rdp_pdu_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()
 
 if(BUILD_TESTING AND WIN32)

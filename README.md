@@ -12,7 +12,7 @@ MoriXterm is a Qt 6 desktop client for developers, sysadmins and operators who w
 | --- | --- | --- |
 | Local shell | Local development and administration | Native shell, terminal themes, zoom and clipboard |
 | SSH | Linux/Unix servers and network devices | Real PTY on Linux, host-key verification, key files, password vault and compatibility profiles |
-| RDP | Windows desktops and GUI applications | FreeRDP, resolution/scale/fullscreen controls, reconnect, clipboard and home-drive redirection |
+| RDP | Windows desktops and GUI applications | Native MoriXterm RDP client (TLS), embedded desktop view |
 | SFTP | Secure file operations over SSH | Two-pane browser, multi-select, queued transfers and progress |
 | FTP / FTPS | Legacy and managed file services | Passive mode, optional TLS, concurrent transfers and overwrite control |
 
@@ -37,15 +37,14 @@ MoriXterm is a Qt 6 desktop client for developers, sysadmins and operators who w
 - Remembered passwords use the operating-system credential vault. On Linux, install `libsecret`; on Windows, the Credential Manager backend is used.
 - Linux uses a real PTY. Windows uses ConPTY for interactive SSH prompts and terminal resizing (Windows 10 1809 or newer). Windows releases bundle OpenSSH, so the installer and portable ZIP do not depend on a separate PATH installation. On Windows, type the SSH password at the terminal prompt; saved-password auto-fill is not yet available.
 
-### RDP with clipboard and display controls
+### RDP with embedded native client
 
-MoriXterm launches FreeRDP and exposes the controls that matter for a remote desktop:
+MoriXterm speaks RDP itself (no FreeRDP binary):
 
-- Width, height, fullscreen and 100–300% display zoom. Set a default in **Settings → RDP**; each RDP profile can override it. Zoom uses FreeRDP smart sizing and takes effect after reconnecting.
-- Bidirectional text and file clipboard through the RDP clipboard channel, when the client and remote server support it.
-- A configurable shared host folder in **Settings → RDP** (the home directory by default). On the remote desktop, open `\\tsclient\home` to move files in either direction. The remote server must allow drive redirection; this is also the fallback when file clipboard is unavailable.
-- Automatic reconnect and certificate ignore/TOFU controls.
-- Clear status and connection diagnostics instead of an opaque black window.
+- Width, height and 100–300% display zoom. Set a default in **Settings → RDP**; each RDP profile can override it.
+- TLS-secured sessions with optional certificate ignore. **NLA/CredSSP is the next milestone** — hosts that require Network Level Authentication will refuse the connection until that lands.
+- Desktop is rendered inside the MoriXterm tab (`RdpView`) with mouse and keyboard input.
+- Shared-folder and clipboard file channels are planned on the native stack; until then use another transfer path when needed.
 
 ### File management and transfers
 

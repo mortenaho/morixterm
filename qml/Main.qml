@@ -1271,7 +1271,7 @@ ApplicationWindow {
                         UI.MTextField { id: rdpSharedFolderField; Layout.fillWidth: true; placeholderText: "Home folder (default)" }
                         UI.MButton { text: "Browse…"; iconText: "▣"; onClicked: rdpSharedFolderDialog.open() }
                     }
-                    Label { text: "Text and file clipboard is enabled in both directions when the FreeRDP client and remote server support it. If file paste is unavailable, use the shared folder instead. Server policy can block both channels."; color: root.muted; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Label { text: "Native RDP client (no FreeRDP). TLS sessions are supported; servers that require NLA/CredSSP need that milestone next. Clipboard file redirection and drive sharing are planned on top of the native stack."; color: root.muted; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     UI.MButton {
                         text: "Apply RDP settings"
                         primary: true
@@ -2546,22 +2546,79 @@ ApplicationWindow {
                                     }
                                 }
 
-                                Rectangle {
+                                Item {
                                     visible: kind === "rdp"
-                                    anchors.centerIn: parent; width: Math.min(parent.width - 80, 650); height: Math.min(parent.height - 20, Math.max(420, rdpCardContent.implicitHeight + 56)); radius: 10; color: root.panel2; border.color: root.border
-                                    ColumnLayout {
-                                        id: rdpCardContent
-                                        anchors.fill: parent; anchors.margins: 28; spacing: 13
-                                        Rectangle { width: 58; height: 58; radius: 16; color: root.accentSoft; Layout.alignment: Qt.AlignHCenter; Label { anchors.centerIn: parent; text: "R"; color: root.accent; font.pixelSize: 28; font.bold: true } }
-                                        Label { text: title; color: root.text; font.pixelSize: 21; font.bold: true; Layout.alignment: Qt.AlignHCenter }
-                                        Label { text: (domain.length?domain+"\\":"") + user + (user.length?" @ ":"") + host + ":" + port; color: root.muted; Layout.alignment: Qt.AlignHCenter }
-                                        Label { Layout.fillWidth: true; text: "FreeRDP runs in its native desktop window while MoriXterm keeps the profile and lifecycle here."; color: root.muted; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter }
-                                        Rectangle { Layout.fillWidth: true; height: 1; color: root.border }
-                                        Label { Layout.fillWidth: true; text: rdpController.statusText; color: rdpController.running ? root.accent : root.muted; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; maximumLineCount: 5; elide: Text.ElideRight }
-                                        Label { Layout.fillWidth: true; text: rdpController.clientBinary.length ? "Client: " + rdpController.clientBinary : "FreeRDP client not detected"; color: root.muted; font.pixelSize: 9; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideMiddle }
-                                        Label { Layout.fillWidth: true; text: "Clipboard: text and files when the server permits • Zoom: " + rdpScale + "%"; color: root.muted; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap }
-                                        Label { Layout.fillWidth: true; text: "Shared folder: " + (rdpController.sharedFolderPath || "not connected") + " → " + root.rdpRemoteShare; color: root.muted; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap }
-                                        RowLayout { Layout.alignment: Qt.AlignHCenter; UI.MButton { text: "Reconnect"; enabled: !rdpController.running; onClicked: { var pw=sessionId>0?sessionStore.passwordForSession(sessionId):""; rdpController.start(host,user,pw,domain,port,rdpWidth,rdpHeight,fullscreen,ignoreCertificate,rdpScale,rdpSettings.sharedFolder) } } UI.MButton { text: "Disconnect"; danger: true; enabled: rdpController.running; onClicked: rdpController.stop() } }
+                                    anchors.fill: parent
+                                    anchors.margins: 8
+
+                                    RdpView {
+                                        id: rdpView
+                                        anchors.fill: parent
+                                        anchors.bottomMargin: 48
+                                        client: rdpController.client
+                                        focus: visible
+                                        visible: rdpController.running
+                                    }
+
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        visible: !rdpController.running
+                                        radius: 10
+                                        color: root.panel2
+                                        border.color: root.border
+                                        ColumnLayout {
+                                            anchors.centerIn: parent
+                                            width: Math.min(parent.width - 48, 560)
+                                            spacing: 12
+                                            Label { text: title; color: root.text; font.pixelSize: 20; font.bold: true; Layout.alignment: Qt.AlignHCenter }
+                                            Label { text: (domain.length?domain+"\\":"") + user + (user.length?" @ ":"") + host + ":" + port; color: root.muted; Layout.alignment: Qt.AlignHCenter }
+                                            Label { Layout.fillWidth: true; text: rdpController.statusText; color: root.muted; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter }
+                                            Label { Layout.fillWidth: true; text: "Native MoriXterm RDP client • TLS (NLA/CredSSP coming next)"; color: root.muted; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap }
+                                            RowLayout {
+                                                Layout.alignment: Qt.AlignHCenter
+                                                UI.MButton {
+                                                    text: "Connect"
+                                                    primary: true
+                                                    onClicked: {
+                                                        var pw=sessionId>0?sessionStore.passwordForSession(sessionId):""
+                                                        rdpController.start(host,user,pw,domain,port,rdpWidth,rdpHeight,fullscreen,ignoreCertificate,rdpScale,rdpSettings.sharedFolder)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.bottom: parent.bottom
+                                        height: 44
+                                        color: root.panel
+                                        border.color: root.border
+                                        RowLayout {
+                                            anchors.fill: parent
+                                            anchors.margins: 8
+                                            Label {
+                                                Layout.fillWidth: true
+                                                text: rdpController.statusText
+                                                color: rdpController.running ? root.accent : root.muted
+                                                elide: Text.ElideRight
+                                            }
+                                            UI.MButton {
+                                                text: "Reconnect"
+                                                enabled: !rdpController.running
+                                                onClicked: {
+                                                    var pw=sessionId>0?sessionStore.passwordForSession(sessionId):""
+                                                    rdpController.start(host,user,pw,domain,port,rdpWidth,rdpHeight,fullscreen,ignoreCertificate,rdpScale,rdpSettings.sharedFolder)
+                                                }
+                                            }
+                                            UI.MButton {
+                                                text: "Disconnect"
+                                                danger: true
+                                                enabled: rdpController.running
+                                                onClicked: rdpController.stop()
+                                            }
+                                        }
                                     }
                                 }
 

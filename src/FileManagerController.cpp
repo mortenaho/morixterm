@@ -1,11 +1,14 @@
 #include "FileManagerController.h"
 #include "SshSecurity.h"
 
+#include <QClipboard>
 #include <QDir>
 #include <QFileInfo>
 #include <QFileInfoList>
-#include <QStandardPaths>
+#include <QGuiApplication>
+#include <QMimeData>
 #include <QRegularExpression>
+#include <QStandardPaths>
 
 #include <algorithm>
 
@@ -32,6 +35,31 @@ QString urlToLocalPath(const QUrl &url)
     if (url.isLocalFile())
         return url.toLocalFile();
     return url.toString();
+}
+
+// Publish local paths to the OS clipboard so FreeRDP/RDP and desktop apps can
+// paste them. MoriXterm's internal clipboard alone never reaches the RDP channel.
+void publishLocalPathsToOsClipboard(const QString &path, bool cut)
+{
+    if (!QGuiApplication::clipboard())
+        return;
+
+    const QUrl fileUrl = QUrl::fromLocalFile(path);
+    auto *mime = new QMimeData;
+    mime->setUrls({fileUrl});
+    mime->setText(path);
+
+    // FreeRDP and GNOME/MATE file managers recognize these MIME types.
+    QByteArray uriList = fileUrl.toEncoded();
+    uriList.append('\n');
+    mime->setData(QStringLiteral("text/uri-list"), uriList);
+
+    QByteArray desktopCopied = cut ? QByteArray("cut\n") : QByteArray("copy\n");
+    desktopCopied += fileUrl.toEncoded();
+    mime->setData(QStringLiteral("x-special/gnome-copied-files"), desktopCopied);
+    mime->setData(QStringLiteral("x-special/mate-copied-files"), desktopCopied);
+
+    QGuiApplication::clipboard()->setMimeData(mime);
 }
 }
 
@@ -351,6 +379,8 @@ void FileManagerController::copyEntry(int row)
     m_clipboardCut = false;
     m_clipboardRemote = m_remote;
     m_clipboardSessionKey = m_remote ? target() + QString::number(m_port) : QStringLiteral("local");
+    if (!m_remote)
+        publishLocalPathsToOsClipboard(entry->path, false);
     emit clipboardChanged();
     setStatus(QStringLiteral("Copied %1").arg(entry->name));
 }
@@ -366,6 +396,8 @@ void FileManagerController::cutEntry(int row)
     m_clipboardCut = true;
     m_clipboardRemote = m_remote;
     m_clipboardSessionKey = m_remote ? target() + QString::number(m_port) : QStringLiteral("local");
+    if (!m_remote)
+        publishLocalPathsToOsClipboard(entry->path, true);
     emit clipboardChanged();
     setStatus(QStringLiteral("Cut %1").arg(entry->name));
 }

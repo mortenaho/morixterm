@@ -1,9 +1,9 @@
 #pragma once
 
-#include <QByteArray>
-#include <QElapsedTimer>
+#include "rdp/RdpClient.h"
+
 #include <QObject>
-#include <QProcess>
+#include <QString>
 
 class RdpSessionController : public QObject
 {
@@ -12,15 +12,16 @@ class RdpSessionController : public QObject
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
     Q_PROPERTY(QString clientBinary READ clientBinary NOTIFY clientBinaryChanged)
     Q_PROPERTY(QString sharedFolderPath READ sharedFolderPath NOTIFY sharedFolderPathChanged)
+    Q_PROPERTY(Rdp::Client *client READ client CONSTANT)
 
 public:
     explicit RdpSessionController(QObject *parent = nullptr);
-    ~RdpSessionController() override;
 
     bool running() const;
-    QString statusText() const { return m_statusText; }
-    QString clientBinary() const { return m_clientBinary; }
+    QString statusText() const { return m_client.statusText(); }
+    QString clientBinary() const { return QStringLiteral("native"); }
     QString sharedFolderPath() const { return m_sharedFolderPath; }
+    Rdp::Client *client() { return &m_client; }
 
     Q_INVOKABLE bool start(const QString &host,
                            const QString &user,
@@ -44,14 +45,7 @@ signals:
     void errorOccurred(const QString &message);
 
 private:
-    QString findClient() const;
-    void setStatus(const QString &text);
-
-    QProcess m_process;
-    QString m_statusText = QStringLiteral("Ready");
-    QString m_clientBinary;
+    Rdp::Client m_client;
     QString m_sharedFolderPath;
-    QString m_targetDisplay;
-    QByteArray m_outputBuffer;
-    QElapsedTimer m_startedAt;
+    bool m_wasRunning = false;
 };
