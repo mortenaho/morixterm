@@ -15,16 +15,39 @@ QString bundledExecutable(const QString &name)
 {
 #ifdef Q_OS_WIN
     const QString appDir = QCoreApplication::applicationDirPath();
+    const QString systemOpenSsh =
+        QStringLiteral("C:/Windows/System32/OpenSSH/%1.exe").arg(name);
     const QStringList candidates {
         QDir(appDir).filePath(QStringLiteral("openssh/%1.exe").arg(name)),
-        QDir(appDir).filePath(QStringLiteral("%1.exe").arg(name))
+        QDir(appDir).filePath(QStringLiteral("%1.exe").arg(name)),
+        systemOpenSsh
     };
     for (const QString &candidate : candidates) {
         if (QFileInfo::exists(candidate) && QFileInfo(candidate).isFile())
             return QDir::toNativeSeparators(candidate);
     }
-#endif
+    // The WindowsApps "App Execution Alias" for ssh.exe is a stub that often
+    // fails under CreateProcess/ConPTY. Prefer a real OpenSSH binary instead.
+    const QString found = QStandardPaths::findExecutable(name);
+    if (!found.isEmpty()
+        && found.contains(QStringLiteral("WindowsApps"), Qt::CaseInsensitive)
+        && QFileInfo::exists(systemOpenSsh)) {
+        return QDir::toNativeSeparators(systemOpenSsh);
+    }
+    return found;
+#else
     return QStandardPaths::findExecutable(name);
+#endif
+}
+
+// OpenSSH treats '\' as an escape inside -o values and config paths, including on
+// Windows. Always feed it forward-slash paths so UserKnownHostsFile / identity
+// files resolve correctly under Win32-OpenSSH.
+QString openSshPath(QString path)
+{
+    path = QDir::cleanPath(path);
+    path.replace(QLatin1Char('\\'), QLatin1Char('/'));
+    return path;
 }
 
 void addOption(QStringList &args, const QString &option)
@@ -143,7 +166,7 @@ QStringList SshSecurity::commonOptions(int port,
     // accepted automatically, but changed keys remain a hard failure until the
     // user explicitly replaces the stored key from the in-app warning dialog.
     addOption(args, QStringLiteral("StrictHostKeyChecking=accept-new"));
-    addOption(args, QStringLiteral("UserKnownHostsFile=") + knownHostsFile());
+    addOption(args, QStringLiteral("UserKnownHostsFile=") + openSshPath(knownHostsFile()));
 #ifdef Q_OS_WIN
     addOption(args, QStringLiteral("GlobalKnownHostsFile=NUL"));
 #else
@@ -152,17 +175,17 @@ QStringList SshSecurity::commonOptions(int port,
     addOption(args, QStringLiteral("HashKnownHosts=yes"));
     addOption(args, QStringLiteral("UpdateHostKeys=yes"));
 #ifdef Q_OS_WIN
-    // QProcess does not provide a console-backed PTY on Windows. Force the
-    // remote PTY so OpenSSH does not downgrade the session to a non-interactive
-    // command and emit the misleading "stdin is not a terminal" warning.
+    // ConPTY already provides a local console. Still force a remote TTY so the
+    // Linux session stays interactive (shell, sudo, password prompts).
     args << QStringLiteral("-tt");
+    addOption(args, QStringLiteral("RequestTTY=force"));
     addOption(args, QStringLiteral("VisualHostKey=no"));
 #else
     addOption(args, QStringLiteral("VisualHostKey=yes"));
 #endif
     addOption(args, QStringLiteral("ServerAliveInterval=30"));
     addOption(args, QStringLiteral("ServerAliveCountMax=3"));
-    addOption(args, QStringLiteral("ConnectTimeout=10"));
+    addOption(args, QStringLiteral("ConnectTimeout=20"));
     // Remote sessions should not silently inherit powerful forwarding features.
     addOption(args, QStringLiteral("ForwardAgent=no"));
     addOption(args, QStringLiteral("ForwardX11=no"));
@@ -176,7 +199,7 @@ QStringList SshSecurity::commonOptions(int port,
         // the file manager share authentication without leaving a background
         // master connection behind after the user closes the tab.
         addOption(args, QStringLiteral("ControlPersist=no"));
-        addOption(args, QStringLiteral("ControlPath=") + controlPath);
+        addOption(args, QStringLiteral("ControlPath=") + openSshPath(controlPath));
     }
 #endif
 
@@ -184,7 +207,7 @@ QStringList SshSecurity::commonOptions(int port,
         addOption(args, QStringLiteral("BatchMode=yes"));
 
     if (!keyFile.trimmed().isEmpty()) {
-        args << QStringLiteral("-i") << keyFile.trimmed();
+        args << QStringLiteral("-i") << openSshPath(keyFile.trimmed());
         addOption(args, QStringLiteral("IdentitiesOnly=yes"));
     }
 
@@ -273,7 +296,7 @@ bool SshSecurityController::replaceHostKey(const QString &host, int port)
         return false;
     }
 
-    const QString filePath = SshSecurity::knownHostsFile();
+    const QString filePath = openSshPath(SshSecurity::knownHostsFile());
     const QString lookup = SshSecurity::hostKeyLookupName(cleanHost, port);
 
     QProcess process;

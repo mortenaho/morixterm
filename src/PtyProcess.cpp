@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QMetaObject>
+#include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
 
@@ -135,9 +136,32 @@ bool PtyProcess::start(const QString &program, const QStringList &arguments, con
     std::wstring commandLine = commandParts.join(QLatin1Char(' ')).toStdWString();
     commandLine.push_back(L'\0');
     const std::wstring executablePath = QDir::toNativeSeparators(executable).toStdWString();
+    // Bundled Win32-OpenSSH loads sibling DLLs from its own folder; also give
+    // the child a sane TERM so remote Linux shells enable colour/line editing.
+    const std::wstring workingDirectory =
+        QDir::toNativeSeparators(QFileInfo(executable).absolutePath()).toStdWString();
+    QStringList environment = QProcess::systemEnvironment();
+    bool hasTerm = false;
+    for (QString &entry : environment) {
+        if (entry.startsWith(QLatin1String("TERM="), Qt::CaseInsensitive)) {
+            entry = QStringLiteral("TERM=xterm-256color");
+            hasTerm = true;
+            break;
+        }
+    }
+    if (!hasTerm)
+        environment.append(QStringLiteral("TERM=xterm-256color"));
+    std::wstring environmentBlock;
+    for (const QString &entry : environment) {
+        environmentBlock.append(entry.toStdWString());
+        environmentBlock.push_back(L'\0');
+    }
+    environmentBlock.push_back(L'\0');
     const BOOL created = CreateProcessW(executablePath.c_str(), commandLine.data(),
-                                        nullptr, nullptr, FALSE, EXTENDED_STARTUPINFO_PRESENT,
-                                        nullptr, nullptr, &startup.StartupInfo, &process);
+                                        nullptr, nullptr, FALSE,
+                                        EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
+                                        environmentBlock.data(), workingDirectory.c_str(),
+                                        &startup.StartupInfo, &process);
     const DWORD createError = created ? ERROR_SUCCESS : GetLastError();
     DeleteProcThreadAttributeList(attributes);
     HeapFree(GetProcessHeap(), 0, attributes);
