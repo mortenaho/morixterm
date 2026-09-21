@@ -664,7 +664,7 @@ bool SessionStore::ensureSchema()
             " domain_name TEXT NOT NULL DEFAULT '',"
             " rdp_width INTEGER NOT NULL DEFAULT 1440,"
             " rdp_height INTEGER NOT NULL DEFAULT 900,"
-            " rdp_scale INTEGER NOT NULL DEFAULT 100,"
+            " rdp_scale INTEGER NOT NULL DEFAULT 125,"
             " fullscreen INTEGER NOT NULL DEFAULT 0,"
             " ignore_certificate INTEGER NOT NULL DEFAULT 0,"
             " folder_id INTEGER REFERENCES session_folders(id) ON DELETE SET NULL,"
@@ -695,7 +695,7 @@ bool SessionStore::ensureSchema()
         !ensureColumn(QStringLiteral("sessions"), QStringLiteral("ftp_tls"),
                       QStringLiteral("INTEGER NOT NULL DEFAULT 1")) ||
         !ensureColumn(QStringLiteral("sessions"), QStringLiteral("rdp_scale"),
-                      QStringLiteral("INTEGER NOT NULL DEFAULT 100")) ||
+                      QStringLiteral("INTEGER NOT NULL DEFAULT 125")) ||
         !ensureColumn(QStringLiteral("sessions"), QStringLiteral("ftp_passive"),
                       QStringLiteral("INTEGER NOT NULL DEFAULT 1")) ||
         !ensureColumn(QStringLiteral("sessions"), QStringLiteral("overwrite_existing"),
@@ -774,7 +774,7 @@ bool SessionStore::ensureSchema()
             " domain_name TEXT NOT NULL DEFAULT '',"
             " rdp_width INTEGER NOT NULL DEFAULT 1440,"
             " rdp_height INTEGER NOT NULL DEFAULT 900,"
-            " rdp_scale INTEGER NOT NULL DEFAULT 100,"
+            " rdp_scale INTEGER NOT NULL DEFAULT 125,"
             " fullscreen INTEGER NOT NULL DEFAULT 0,"
             " ignore_certificate INTEGER NOT NULL DEFAULT 0,"
             " folder_id INTEGER REFERENCES session_folders(id) ON DELETE SET NULL,"

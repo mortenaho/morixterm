@@ -8,8 +8,6 @@
 #include "SshSecurity.h"
 #include "TerminalItem.h"
 #include "Version.h"
-#include "rdp/RdpClient.h"
-#include "rdp/RdpViewItem.h"
 
 #include <QCoreApplication>
 #include <QGuiApplication>
@@ -38,9 +36,6 @@ int main(int argc, char *argv[])
     qmlRegisterType<FileManagerController>("MoriXterm.FileManager", 1, 0, "FileManagerController");
     qmlRegisterType<FtpClientController>("MoriXterm.Ftp", 1, 0, "FtpClientController");
     qmlRegisterType<RdpSessionController>("MoriXterm.Rdp", 1, 0, "RdpSessionController");
-    qmlRegisterUncreatableType<Rdp::Client>("MoriXterm.Rdp", 1, 0, "RdpClient",
-                                            QStringLiteral("Use RdpSessionController.client"));
-    qmlRegisterType<RdpViewItem>("MoriXterm.Rdp", 1, 0, "RdpView");
 
     CredentialStore credentialStore;
     AppLockManager appLock;

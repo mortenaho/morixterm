@@ -3,3 +3,6 @@ cmake-build-*/
 .idea/
 .vscode/
 *.user
+
+# Local FreeRDP soname symlinks (point at system libs)
+third_party/freerdp-lib/
