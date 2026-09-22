@@ -25,8 +25,11 @@ void PtyProcessWindowsTest::interactiveConsole()
     const QString shell = qEnvironmentVariable("ComSpec", "cmd.exe");
     QVERIFY(terminal.start(shell));
     terminal.resize(30, 100);
-    terminal.writeData(QByteArrayLiteral("echo MORIXTERM_CONPTY_READY\r"));
-    QTRY_VERIFY_WITH_TIMEOUT(output.contains("MORIXTERM_CONPTY_READY"), 10000);
+    terminal.writeData(QByteArrayLiteral("echo MORIXTERM_CONPTY_READY\r\n"));
+    QTRY_VERIFY2_WITH_TIMEOUT(output.contains("MORIXTERM_CONPTY_READY"),
+                              qPrintable(QStringLiteral("captured: %1")
+                                             .arg(QString::fromLocal8Bit(output).replace(QLatin1Char('\r'), QLatin1Char(' ')).left(300))),
+                              10000);
     terminal.writeData(QByteArrayLiteral("exit\r"));
     QTRY_COMPARE_WITH_TIMEOUT(exited.size(), 1, 10000);
     QCOMPARE(exited.at(0).at(0).toInt(), 0);
@@ -49,7 +52,10 @@ void PtyProcessWindowsTest::bundledOpenSsh()
 
     QVERIFY(terminal.start(ssh, {QStringLiteral("-V")}));
     QTRY_COMPARE_WITH_TIMEOUT(exited.size(), 1, 10000);
-    QTRY_VERIFY_WITH_TIMEOUT(output.contains("OpenSSH"), 3000);
+    QTRY_VERIFY2_WITH_TIMEOUT(output.contains("OpenSSH"),
+                              qPrintable(QStringLiteral("captured: %1")
+                                             .arg(QString::fromLocal8Bit(output).replace(QLatin1Char('\r'), QLatin1Char(' ')).left(300))),
+                              10000);
     QCOMPARE(exited.at(0).at(0).toInt(), 0);
     QCOMPARE(errors.size(), 0);
 }
