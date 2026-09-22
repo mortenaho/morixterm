@@ -18,7 +18,7 @@ struct SavedSession
     QString domain;
     int width = 1440;
     int height = 900;
-    int scale = 100;
+    int scale = 125;
     bool fullscreen = false;
     bool ignoreCertificate = false;
     qint64 folderId = 0;
@@ -115,7 +115,7 @@ public:
                                    bool ftpPassive = true,
                                    bool overwriteExisting = true,
                                    int maxParallel = 4,
-                                   int scale = 100);
+                                   int scale = 125);
     Q_INVOKABLE bool removeSessionById(qint64 sessionId);
     Q_INVOKABLE bool createFolder(const QString &name);
     Q_INVOKABLE bool renameFolder(qint64 folderId, const QString &name);

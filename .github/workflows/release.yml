@@ -1,7 +1,14 @@
 name: Build and Release
 
 on:
+  release:
+    types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to rebuild (leave blank for the next version)'
+        required: false
+        type: string
 
 concurrency:
   group: morixterm-release
@@ -16,7 +23,7 @@ env:
 
 jobs:
   prepare:
-    name: Select next release version
+    name: Resolve release version and source
     runs-on: ubuntu-24.04
     outputs:
       tag: ${{ steps.version.outputs.tag }}
@@ -24,27 +31,55 @@ jobs:
       sha: ${{ steps.version.outputs.sha }}
     steps:
       - name: Require main branch
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: test "$GITHUB_REF" = 'refs/heads/main'
 
-      - name: Checkout main with tags
+      - name: Checkout source with tags
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Select next version
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test release workflow logic
+        run: |
+          python3 -m pip install -r scripts/requirements-ci.txt
+          python3 -B -m unittest discover -s tests -p 'test_*.py'
+
+      - name: Resolve release version
         id: version
         shell: bash
+        env:
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          REQUESTED_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          tag="$(python3 scripts/next_release_version.py)"
+          tag="${EVENT_TAG:-${REQUESTED_TAG:-}}"
+          if [ -n "$tag" ]; then
+            if [[ ! "$tag" =~ ^v[1-9][0-9]*(\.(0|[1-9][0-9]*)){0,2}$ ]]; then
+              echo 'Use a numeric release tag such as v4 or v4.1.0.' >&2
+              exit 1
+            fi
+            sha="$(git rev-parse --verify "refs/tags/${tag}^{commit}")"
+            if [ "$GITHUB_EVENT_NAME" = release ] && [ "$sha" != "$GITHUB_SHA" ]; then
+              echo 'Release tag moved after the event was created.' >&2
+              exit 1
+            fi
+          else
+            tag="$(python3 scripts/next_release_version.py)"
+            sha="$(git rev-parse HEAD)"
+          fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
   linux:
-    name: Linux AppImage and DEB
+    name: Linux DEB and optional AppImage
     needs: prepare
     runs-on: ubuntu-24.04
     env:
@@ -63,7 +98,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             cmake ninja-build g++ patchelf file desktop-file-utils \
             qt6-base-dev qt6-declarative-dev qt6-declarative-dev-tools qt6-tools-dev qt6-tools-dev-tools \
-            libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0 \
+            libgl1-mesa-dev libx11-dev libxfixes-dev libxkbcommon-x11-0 libxcb-cursor0 \
             libsecret-tools openssh-client sshpass libqt6svg6 zip unzip
 
       - name: QML duplicate property preflight
@@ -100,29 +135,26 @@ jobs:
         run: |
           mkdir -p release
           cd build
-          cpack -G DEB
-          mv ./*.deb ../release/
+          cpack -G DEB -B ../release \
+            -D "CPACK_DEBIAN_FILE_NAME=morixterm_${RELEASE_VERSION}_amd64.deb"
+          dpkg-deb --info "../release/morixterm_${RELEASE_VERSION}_amd64.deb"
 
-      - name: Prepare AppDir
-        run: |
-          rm -rf AppDir
-          DESTDIR="$GITHUB_WORKSPACE/AppDir" cmake --install build
-
-      - name: Download linuxdeploy
-        run: |
-          curl -L --fail --retry 3 -o linuxdeploy-x86_64.AppImage \
-            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-          curl -L --fail --retry 3 -o linuxdeploy-plugin-qt-x86_64.AppImage \
-            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
-          chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-qt-x86_64.AppImage
-
-      - name: Build AppImage
+      - name: Build optional AppImage
+        id: appimage
+        continue-on-error: true
         env:
           APPIMAGE_EXTRACT_AND_RUN: '1'
           QML_SOURCES_PATHS: '${{ github.workspace }}/qml'
           QMAKE: /usr/bin/qmake6
           OUTPUT: 'MoriXterm-${{ env.RELEASE_TAG }}-Linux-x86_64.AppImage'
         run: |
+          rm -rf AppDir
+          DESTDIR="$GITHUB_WORKSPACE/AppDir" cmake --install build
+          curl -L --fail --retry 3 -o linuxdeploy-x86_64.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          curl -L --fail --retry 3 -o linuxdeploy-plugin-qt-x86_64.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-qt-x86_64.AppImage
           export PATH="$GITHUB_WORKSPACE:$PATH"
           ./linuxdeploy-x86_64.AppImage \
             --appdir AppDir \
@@ -130,17 +162,32 @@ jobs:
             --icon-file assets/morixtrem.png \
             --plugin qt \
             --output appimage
-          mv MoriXterm-*.AppImage "release/${OUTPUT}" 2>/dev/null || mv *.AppImage "release/${OUTPUT}"
+          test -s "$OUTPUT"
+          mv -- "$OUTPUT" "release/$OUTPUT"
 
-      - name: Upload Linux packages
+      - name: Upload DEB
         uses: actions/upload-artifact@v4
         with:
           name: linux-packages
-          path: release/*
+          path: release/morixterm_${{ env.RELEASE_VERSION }}_amd64.deb
           if-no-files-found: error
 
+      - name: Upload AppImage
+        id: appimage_upload
+        if: steps.appimage.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage-packages
+          path: release/MoriXterm-${{ env.RELEASE_TAG }}-Linux-x86_64.AppImage
+          if-no-files-found: error
+
+      - name: Report optional AppImage failure
+        if: steps.appimage.outcome == 'failure' || steps.appimage_upload.outcome == 'failure'
+        run: echo '::warning::AppImage packaging failed. DEB and Windows packages will still be released.'
+
   windows:
-    name: Windows EXE
+    name: Windows installer EXE and portable ZIP
     needs: prepare
     runs-on: windows-2022
     env:
@@ -186,6 +233,17 @@ jobs:
           Copy-Item build/bin/Release/morixtrem.exe dist/windows/morixtrem.exe
           windeployqt --release --qmldir qml --dir dist/windows dist/windows/morixtrem.exe
 
+      - name: Bundle MSVC runtime for portable use
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if ($LASTEXITCODE -ne 0 -or -not $vsPath) { throw 'Visual C++ installation was not found.' }
+          $crt = Get-ChildItem "$vsPath/VC/Redist/MSVC/*/x64/Microsoft.VC143.CRT" -Directory |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $crt) { throw 'The x64 Visual C++ runtime was not found.' }
+          Copy-Item "$($crt.FullName)/*.dll" dist/windows/ -Force
+
       - name: Bundle OpenSSH client
         shell: pwsh
         run: |
@@ -223,11 +281,29 @@ jobs:
           New-Item -ItemType Directory -Force release | Out-Null
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging/windows/MoriXterm.iss
 
-      - name: Upload Windows package
+      - name: Verify Windows packages
+        shell: pwsh
+        run: |
+          $requiredFiles = @('morixtrem.exe', 'Qt6Core.dll', 'platforms/qwindows.dll',
+            'sqldrivers/qsqlite.dll', 'openssh/ssh.exe', 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')
+          foreach ($name in @("MoriXterm-$env:RELEASE_VERSION-Windows-x64-Setup.exe",
+                               "MoriXterm-$env:RELEASE_VERSION-Windows-x64-Portable.zip")) {
+            if (-not (Test-Path "release/$name" -PathType Leaf)) { throw "Missing package: $name" }
+            if ((Get-Item "release/$name").Length -eq 0) { throw "Empty package: $name" }
+          }
+          $portableCheck = Join-Path $env:RUNNER_TEMP 'morixterm-portable-check'
+          Expand-Archive "release/MoriXterm-$env:RELEASE_VERSION-Windows-x64-Portable.zip" $portableCheck -Force
+          foreach ($file in $requiredFiles) {
+            if (-not (Test-Path "$portableCheck/$file" -PathType Leaf)) { throw "Missing portable runtime file: $file" }
+          }
+
+      - name: Upload Windows packages
         uses: actions/upload-artifact@v4
         with:
-          name: windows-package
-          path: release/*
+          name: windows-packages
+          path: |
+            release/MoriXterm-${{ env.RELEASE_VERSION }}-Windows-x64-Setup.exe
+            release/MoriXterm-${{ env.RELEASE_VERSION }}-Windows-x64-Portable.zip
           if-no-files-found: error
 
   release:
@@ -251,36 +327,41 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: release-assets
+          pattern: '*-packages'
           merge-multiple: true
 
       - name: Verify complete release assets
         shell: bash
         run: |
           set -euo pipefail
-          test -f "release-assets/MoriXterm-${RELEASE_VERSION}-Windows-x64-Setup.exe"
-          test -f "release-assets/MoriXterm-${RELEASE_VERSION}-Windows-x64-Portable.zip"
-          test -f "release-assets/MoriXterm-${RELEASE_TAG}-Linux-x86_64.AppImage"
-          compgen -G "release-assets/*_${RELEASE_VERSION}_amd64.deb" >/dev/null
+          test -s "release-assets/MoriXterm-${RELEASE_VERSION}-Windows-x64-Setup.exe"
+          test -s "release-assets/MoriXterm-${RELEASE_VERSION}-Windows-x64-Portable.zip"
+          test -s "release-assets/morixterm_${RELEASE_VERSION}_amd64.deb"
 
-      - name: Create version tag
+      - name: Create or verify version tag
         shell: bash
         run: |
           set -euo pipefail
-          if git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_TAG}" >/dev/null; then
-            echo "Release tag ${RELEASE_TAG} already exists" >&2
-            exit 1
+          remote_tag="$(git ls-remote --tags origin "refs/tags/${RELEASE_TAG}")"
+          if [ -n "$remote_tag" ]; then
+            git fetch --no-tags origin "refs/tags/${RELEASE_TAG}"
+            test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$RELEASE_SHA"
+          else
+            git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              tag -a "${RELEASE_TAG}" "${RELEASE_SHA}" -m "MoriXterm ${RELEASE_TAG}"
+            git push origin "refs/tags/${RELEASE_TAG}"
           fi
-          git -c user.name='github-actions[bot]' \
-            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
-            tag -a "${RELEASE_TAG}" "${RELEASE_SHA}" -m "MoriXterm ${RELEASE_TAG}"
-          git push origin "refs/tags/${RELEASE_TAG}"
 
-      - name: Publish release
+      - name: Publish or update release assets
         shell: bash
         run: |
           set -euo pipefail
-          gh release create "${RELEASE_TAG}" release-assets/* \
-            --repo "${GITHUB_REPOSITORY}" \
-            --verify-tag \
-            --title "MoriXterm ${RELEASE_TAG}" \
-            --generate-notes
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release-assets/* \
+              --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$RELEASE_TAG" release-assets/* \
+              --repo "$GITHUB_REPOSITORY" --verify-tag \
+              --title "MoriXterm $RELEASE_TAG" --generate-notes
+          fi

@@ -12,7 +12,7 @@ MoriXterm is a Qt 6 desktop client for developers, sysadmins and operators who w
 | --- | --- | --- |
 | Local shell | Local development and administration | Native shell, terminal themes, zoom and clipboard |
 | SSH | Linux/Unix servers and network devices | Real PTY on Linux, host-key verification, key files, password vault and compatibility profiles |
-| RDP | Windows desktops and GUI applications | Native MoriXterm RDP client (TLS), embedded desktop view |
+| RDP | Windows desktops and GUI applications | System FreeRDP client (`sdl-freerdp` / `xfreerdp`) launched from MoriXterm |
 | SFTP | Secure file operations over SSH | Two-pane browser, multi-select, queued transfers and progress |
 | FTP / FTPS | Legacy and managed file services | Passive mode, optional TLS, concurrent transfers and overwrite control |
 
@@ -37,14 +37,14 @@ MoriXterm is a Qt 6 desktop client for developers, sysadmins and operators who w
 - Remembered passwords use the operating-system credential vault. On Linux, install `libsecret`; on Windows, the Credential Manager backend is used.
 - Linux uses a real PTY. Windows uses ConPTY for interactive SSH prompts and terminal resizing (Windows 10 1809 or newer). Windows releases bundle OpenSSH, so the installer and portable ZIP do not depend on a separate PATH installation. On Windows, type the SSH password at the terminal prompt; saved-password auto-fill is not yet available.
 
-### RDP with embedded native client
+### RDP with FreeRDP
 
-MoriXterm speaks RDP itself (no FreeRDP binary):
+MoriXterm launches the system **FreeRDP** client (`sdl-freerdp3` / `xfreerdp3` / `xfreerdp`) in its own window:
 
-- Width, height and 100–300% display zoom. Set a default in **Settings → RDP**; each RDP profile can override it.
-- TLS-secured sessions with optional certificate ignore. **NLA/CredSSP is the next milestone** — hosts that require Network Level Authentication will refuse the connection until that lands.
-- Desktop is rendered inside the MoriXterm tab (`RdpView`) with mouse and keyboard input.
-- Shared-folder and clipboard file channels are planned on the native stack; until then use another transfer path when needed.
+- Width, height, fullscreen and 100–300% display zoom from **Settings → Remote Desktop**.
+- NLA, bidirectional clipboard (text + files) and shared-folder drive redirection via FreeRDP.
+- The default shared folder is `~/morixterm/share`, created automatically and exposed as `\\tsclient\morixterm`. Only that folder is shared; a custom folder can be selected in Remote Desktop settings.
+- For direct file copy/paste, MoriXterm prefers `xfreerdp3` / `xfreerdp`, including under XWayland, and bridges the desktop's file clipboard automatically. Without XWayland, it prefers the native SDL client.
 
 ### File management and transfers
 
@@ -89,7 +89,7 @@ chmod +x ./MoriXterm-v*-Linux-x86_64.AppImage
 ./MoriXterm-v*-Linux-x86_64.AppImage
 ```
 
-For Linux SSH password injection and credential storage, install `sshpass` and `libsecret-tools`. For RDP, install `freerdp3-x11` (or a compatible `xfreerdp` package).
+For Linux SSH password injection and credential storage, install `sshpass` and `libsecret-tools`. For RDP, install `freerdp3-x11` / `freerdp-x11`, or `freerdp-sdl` on a Wayland desktop without XWayland.
 
 ## Build from source
 
@@ -119,9 +119,17 @@ Read the full [SECURITY.md](SECURITY.md) before deploying MoriXterm in productio
 
 ## Releases
 
-Run **Actions → Build and Release → Run workflow** on `main`. The workflow chooses the next numbered tag (`v3`, `v4`, `v5`, …), builds the Linux AppImage and DEB plus the Windows installer and portable ZIP from the same commit, and then creates the tag and GitHub Release. The package versions and the version shown in the app come from that tag. The legacy Flutter workflow only uploads CI artifacts and does not publish GitHub Releases.
+Run **Actions → Build and Release → Run workflow** on `main`, leaving `tag` blank to choose the next numbered version (`v3`, `v4`, `v5`, …). Publishing a GitHub Release also starts the workflow automatically, using that release's tagged commit. To rebuild an existing release manually, enter its tag (for example, `v4`) in the workflow input. Numeric tags such as `v4.1.0` are also supported.
 
-The workflow needs `contents: write` permission to push the tag and publish the release. A failed build does not consume a version; if publishing fails after the tag is pushed, inspect that tag before starting another release.
+Every successful run attaches these downloads to the GitHub Release:
+
+- `morixterm_<version>_amd64.deb` — Debian/Ubuntu package.
+- `MoriXterm-<version>-Windows-x64-Setup.exe` — Windows installer.
+- `MoriXterm-<version>-Windows-x64-Portable.zip` — extract and run, including Qt, the Visual C++ runtime and OpenSSH.
+
+The Linux AppImage is also attached when its optional packaging step succeeds. Its failure does not block the three required downloads. All packages use the same source commit and release version. The legacy Flutter workflow only uploads CI artifacts and does not publish GitHub Releases.
+
+The workflow needs `contents: write` permission to create the tag and upload release assets. A failed build does not consume an automatically selected version. If publishing fails after the tag is pushed, rerun the failed publishing job or run the workflow with that existing tag. Existing tags must still point to the built commit; existing release downloads are replaced on retry while the release title and notes are preserved.
 
 ## License and project information
 
