@@ -129,6 +129,13 @@ bool PtyProcess::start(const QString &program, const QStringList &arguments, con
     STARTUPINFOEXW startup {};
     startup.StartupInfo.cb = sizeof(startup);
     startup.lpAttributeList = attributes;
+    // Leave the inherited standard handles unset. Otherwise cmd reads the
+    // parent's closed stdin, exits immediately, and ssh -V writes its version
+    // to the parent stderr instead of the ConPTY.
+    startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+    startup.StartupInfo.hStdInput = nullptr;
+    startup.StartupInfo.hStdOutput = nullptr;
+    startup.StartupInfo.hStdError = nullptr;
     PROCESS_INFORMATION process {};
     const QString nativeExecutable = QDir::toNativeSeparators(executable);
     QStringList commandParts {quoteWindowsArgument(nativeExecutable)};
