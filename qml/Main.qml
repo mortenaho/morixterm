@@ -32,7 +32,7 @@ ApplicationWindow {
     property color accentSoft: "#2b3a34"
     property color danger: "#ff7078"
     property color warning: "#e3b85c"
-    property string rdpRemoteShare: String.fromCharCode(92, 92) + "tsclient" + String.fromCharCode(92) + "home"
+    property string rdpRemoteShare: String.fromCharCode(92, 92) + "tsclient" + String.fromCharCode(92) + "morixterm"
 
     function effectiveRdpScale(sessionScale) {
         // Settings → RDP → Default zoom is the live value used on connect.
@@ -424,7 +424,7 @@ ApplicationWindow {
         heightField.text = "900"
         scaleField.text = String(Math.max(100, Math.min(300, rdpSettings.defaultScale || 125)))
         fullscreenBox.checked = false
-        ignoreCertBox.checked = protocolCombo.currentIndex === 1 // RDP: self-signed certs are the norm
+        ignoreCertBox.checked = false
         ftpTlsBox.checked = true
         ftpIgnoreCertBox.checked = false
         ftpPassiveBox.checked = true
@@ -764,8 +764,8 @@ ApplicationWindow {
                         UI.MCheckBox { id: fullscreenBox; text: "Fullscreen" }
                         UI.MCheckBox {
                             id: ignoreCertBox
-                            text: "Ignore certificate validation (typical for self-signed RDP hosts)"
-                            checked: true
+                            text: "Ignore certificate validation (unsafe; use only for known legacy hosts)"
+                            checked: false
                         }
                     }
 
@@ -1281,13 +1281,13 @@ ApplicationWindow {
                         Label { text: "%"; color: root.muted }
                     }
                     Label { text: "Shared host folder"; color: root.text; font.bold: true }
-                    Label { text: "Both sides can read and write this folder. In the remote desktop open " + root.rdpRemoteShare + ". Leave blank to share your home folder."; color: root.muted; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Label { text: "Both sides can read and write this folder. In the remote desktop open " + root.rdpRemoteShare + ". Leave blank to create and share ~/morixterm/share automatically."; color: root.muted; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     RowLayout {
                         Layout.fillWidth: true
-                        UI.MTextField { id: rdpSharedFolderField; Layout.fillWidth: true; placeholderText: "Home folder (default)" }
+                        UI.MTextField { id: rdpSharedFolderField; Layout.fillWidth: true; placeholderText: "~/morixterm/share (default)" }
                         UI.MButton { text: "Browse…"; iconText: "▣"; onClicked: rdpSharedFolderDialog.open() }
                     }
-                    Label { text: "Clipboard (text and files) is redirected by FreeRDP in both directions when the server allows it. On Wayland, install freerdp-sdl for the most reliable clipboard."; color: root.muted; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Label { text: "Copy files on your computer, then paste them into a folder in the remote desktop. Clipboard text and files work both ways when the server allows it."; color: root.muted; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     UI.MButton {
                         text: "Apply RDP settings"
                         primary: true
@@ -2608,7 +2608,7 @@ ApplicationWindow {
                                         }
                                         Label {
                                             Layout.fillWidth: true
-                                            text: "Clipboard: mirrored X11↔Wayland for text • Zoom: " + root.effectiveRdpScale(rdpScale) + "% (Settings → Remote Desktop)"
+                                            text: "Clipboard: text and files both ways • Zoom: " + root.effectiveRdpScale(rdpScale) + "% (Settings → Remote Desktop)"
                                             color: root.muted; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap
                                         }
                                         Label {

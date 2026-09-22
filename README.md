@@ -43,7 +43,8 @@ MoriXterm launches the system **FreeRDP** client (`sdl-freerdp3` / `xfreerdp3` /
 
 - Width, height, fullscreen and 100–300% display zoom from **Settings → Remote Desktop**.
 - NLA, bidirectional clipboard (text + files) and shared-folder drive redirection via FreeRDP.
-- On Wayland, prefer `freerdp-sdl` (`sdl-freerdp3`) for reliable clipboard; otherwise install `freerdp3-x11` / `freerdp-x11`.
+- The default shared folder is `~/morixterm/share`, created automatically and exposed as `\\tsclient\morixterm`. Only that folder is shared; a custom folder can be selected in Remote Desktop settings.
+- For direct file copy/paste, MoriXterm prefers `xfreerdp3` / `xfreerdp`, including under XWayland, and bridges the desktop's file clipboard automatically. Without XWayland, it prefers the native SDL client.
 
 ### File management and transfers
 
@@ -88,7 +89,7 @@ chmod +x ./MoriXterm-v*-Linux-x86_64.AppImage
 ./MoriXterm-v*-Linux-x86_64.AppImage
 ```
 
-For Linux SSH password injection and credential storage, install `sshpass` and `libsecret-tools`. For RDP, install `freerdp-sdl` (recommended on Wayland) or `freerdp3-x11`.
+For Linux SSH password injection and credential storage, install `sshpass` and `libsecret-tools`. For RDP, install `freerdp3-x11` / `freerdp-x11`, or `freerdp-sdl` on a Wayland desktop without XWayland.
 
 ## Build from source
 

@@ -52,6 +52,18 @@ FreeRdpCapabilities capabilitiesFor(const QString &binary)
     return result;
 }
 
+bool isWaylandFreeRdpClient(const QString &binary)
+{
+    const QString name = QFileInfo(binary).fileName();
+    return name.contains(QStringLiteral("sdl"), Qt::CaseInsensitive)
+        || name.contains(QStringLiteral("wlfreerdp"), Qt::CaseInsensitive);
+}
+
+bool isX11FreeRdpClient(const QString &binary)
+{
+    return QFileInfo(binary).fileName().startsWith(QStringLiteral("xfreerdp"), Qt::CaseInsensitive);
+}
+
 QString compactProcessOutput(QByteArray output)
 {
     output.replace('\r', '\n');
@@ -70,7 +82,10 @@ QString compactProcessOutput(QByteArray output)
         const bool stdinTtyNoise = lower.contains(QStringLiteral("freerdp.utils.passphrase"))
             && (lower.contains(QStringLiteral("tcsetattr")) || lower.contains(QStringLiteral("tcgetattr")))
             && lower.contains(QStringLiteral("inappropriate ioctl for device"));
-        if (!xkbNoise && !stdinTtyNoise)
+        const bool clipCleanupNoise = lower.contains(QStringLiteral("cliprdr_file_session_terminate"))
+            || (lower.contains(QStringLiteral("winpr_pathfileexists"))
+                && lower.contains(QStringLiteral("cliprdr")));
+        if (!xkbNoise && !stdinTtyNoise && !clipCleanupNoise)
             allUseful << line;
 
         if (lower.contains(QStringLiteral("[error]"))
@@ -85,7 +100,8 @@ QString compactProcessOutput(QByteArray output)
             || lower.contains(QStringLiteral("clipboard"))
             || lower.contains(QStringLiteral("cliprdr"))
             || lower.contains(QStringLiteral("policy denies"))) {
-            diagnostics << line;
+            if (!clipCleanupNoise)
+                diagnostics << line;
         }
     }
 
@@ -262,8 +278,17 @@ bool RdpSessionController::start(const QString &host,
     QString folderPath = sharedFolder.trimmed();
     if (folderPath.startsWith(QStringLiteral("file://"), Qt::CaseInsensitive))
         folderPath = QUrl(folderPath).toLocalFile();
-    if (folderPath.isEmpty())
-        folderPath = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
+    if (folderPath.isEmpty()) {
+        const QString home = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
+        folderPath = QDir(home).filePath(QStringLiteral("morixterm/share"));
+        if (home.isEmpty() || !QDir().mkpath(folderPath)) {
+            const QString message = QStringLiteral("Could not create the RDP shared folder: %1")
+                                        .arg(folderPath);
+            setStatus(message);
+            emit errorOccurred(message);
+            return false;
+        }
+    }
     const QFileInfo folderInfo(folderPath);
     if (folderPath.contains(QLatin1Char('\n')) || folderPath.contains(QLatin1Char('\r'))
         || !folderInfo.isDir() || !folderInfo.isReadable()) {
@@ -283,7 +308,7 @@ bool RdpSessionController::start(const QString &host,
             "FreeRDP was not found. Install FreeRDP 3 (wfreerdp) or place wfreerdp.exe beside MoriXterm.exe.");
 #else
         const QString message = QStringLiteral(
-            "FreeRDP was not found. Install freerdp-sdl (recommended on Wayland) or freerdp3-x11 / freerdp-x11 and try again.");
+            "FreeRDP was not found. On Wayland install freerdp-sdl (or freerdp-wayland). Otherwise install freerdp3-x11 / freerdp-x11.");
 #endif
         setStatus(message);
         emit errorOccurred(message);
@@ -308,12 +333,15 @@ bool RdpSessionController::start(const QString &host,
          << QStringLiteral("+auto-reconnect")
          << QStringLiteral("/network:auto");
 #ifndef Q_OS_WIN
-    // X11 clients talk to the CLIPBOARD selection; SDL/Wayland must not set this.
-    if (!m_clientBinary.contains(QStringLiteral("sdl"), Qt::CaseInsensitive))
-        args << QStringLiteral("/clipboard:use-selection:CLIPBOARD");
+    // One /clipboard option so direction and file flags stay together.
+    // use-selection is X11-only; SDL and wlfreerdp talk to the Wayland clipboard.
+    if (isX11FreeRdpClient(m_clientBinary)) {
+        args.removeAll(QStringLiteral("/clipboard:direction-to:all,files-to:all"));
+        args << QStringLiteral("/clipboard:direction-to:all,files-to:all,use-selection:CLIPBOARD");
+    }
 #endif
 
-    args << QStringLiteral("/drive:home,%1").arg(folderPath);
+    args << QStringLiteral("/drive:morixterm,%1").arg(folderPath);
 
     // /gfx is useful on modern servers but is not required for a connection and
     // has caused compatibility problems with some older gateways. Let FreeRDP
@@ -322,18 +350,28 @@ bool RdpSessionController::start(const QString &host,
     args << QStringLiteral("/wm-class:MoriXterm-RDP");
 #endif
 
-    // /scale-desktop only advertises remote DPI and is ignored by many RDP
-    // servers. Smart sizing magnifies the actual rendered desktop. Keep the
-    // client window at the requested size and ask the server for fewer pixels.
+    // Wayland clients (wlfreerdp) talk to the compositor clipboard, including
+    // text/uri-list for file paste. On HiDPI, a bare /smart-sizing scales the
+    // framebuffer into the real window so we do not get a white margin.
+    // /smart-sizing:WxH and /scale* fight each other on wlfreerdp — avoid both.
     QSize windowSize(width, height);
     if (fullscreen && QGuiApplication::primaryScreen())
         windowSize = QGuiApplication::primaryScreen()->size();
-    if (scale > 100) {
+    if (isWaylandFreeRdpClient(m_clientBinary)) {
+        int remoteWidth = windowSize.width();
+        int remoteHeight = windowSize.height();
+        if (scale > 100) {
+            remoteWidth = qMax(200, qRound(windowSize.width() * 100.0 / scale));
+            remoteHeight = qMax(200, qRound(windowSize.height() * 100.0 / scale));
+        }
+        args << QStringLiteral("/size:%1x%2").arg(remoteWidth).arg(remoteHeight)
+             << QStringLiteral("/smart-sizing");
+    } else if (scale > 100) {
         const int remoteWidth = qMax(200, qRound(windowSize.width() * 100.0 / scale));
         const int remoteHeight = qMax(200, qRound(windowSize.height() * 100.0 / scale));
         if (fullscreen) {
-            // In fullscreen FreeRDP treats smart-sizing's dimensions as the
-            // *remote* desktop size and scales that image to the monitor.
+            // In fullscreen xfreerdp treats smart-sizing's dimensions as the
+            // remote desktop size and scales that image to the monitor.
             args << QStringLiteral("/smart-sizing:%1x%2").arg(remoteWidth).arg(remoteHeight);
         } else {
             args << QStringLiteral("/size:%1x%2").arg(remoteWidth).arg(remoteHeight)
@@ -343,7 +381,7 @@ bool RdpSessionController::start(const QString &host,
     }
     if (fullscreen) {
         args << QStringLiteral("/f");
-    } else if (scale == 100) {
+    } else if (scale == 100 && !isWaylandFreeRdpClient(m_clientBinary)) {
         args << QStringLiteral("/size:%1x%2").arg(width).arg(height)
              << QStringLiteral("+dynamic-resolution");
     }
@@ -365,11 +403,19 @@ bool RdpSessionController::start(const QString &host,
 
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
 #ifndef Q_OS_WIN
-    const bool sdlClient = m_clientBinary.contains(QStringLiteral("sdl"), Qt::CaseInsensitive);
-    if (sdlClient && !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")) {
+    const QString localLib = QDir(QStandardPaths::writableLocation(QStandardPaths::HomeLocation))
+                                 .filePath(QStringLiteral(".local/lib"));
+    if (QFileInfo(localLib).isDir()) {
+        const QString existing = env.value(QStringLiteral("LD_LIBRARY_PATH"));
+        env.insert(QStringLiteral("LD_LIBRARY_PATH"),
+                   existing.isEmpty() ? localLib : localLib + QLatin1Char(':') + existing);
+    }
+    if (isWaylandFreeRdpClient(m_clientBinary) && !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")
+        && QFileInfo(m_clientBinary).fileName().contains(QStringLiteral("sdl"), Qt::CaseInsensitive)) {
+        // A DISPLAY is also set under XWayland. Force SDL onto Wayland so clipboard
+        // and file paste talk to the compositor instead of the X11 selection.
         env.insert(QStringLiteral("SDL_VIDEODRIVER"), QStringLiteral("wayland"));
-    } else if (!sdlClient) {
-        // Keep X11 FreeRDP on the same DISPLAY MoriXterm's clipboard bridge reads.
+    } else if (isX11FreeRdpClient(m_clientBinary)) {
         if (!env.contains(QStringLiteral("DISPLAY")))
             env.insert(QStringLiteral("DISPLAY"), QStringLiteral(":0"));
     }
@@ -440,10 +486,10 @@ void RdpSessionController::stop()
 void RdpSessionController::startClipboardBridge()
 {
 #ifndef Q_OS_WIN
-    // xfreerdp talks to the X11 CLIPBOARD; on Wayland that never reaches local apps
-    // unless we mirror it into the compositor clipboard Qt owns.
-    const bool sdlClient = m_clientBinary.contains(QStringLiteral("sdl"), Qt::CaseInsensitive);
-    if (sdlClient || qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY"))
+    // SDL and wlfreerdp own the Wayland clipboard, including file URI lists.
+    // The X11 bridge is only for xfreerdp under XWayland, and it must not run
+    // beside a Wayland client or it will steal the selection and drop files.
+    if (!isX11FreeRdpClient(m_clientBinary) || qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY"))
         return;
     if (!m_clipboardBridge)
         m_clipboardBridge = new RdpClipboardBridge(this);
@@ -476,26 +522,41 @@ QString RdpSessionController::findClient() const
         QStringLiteral("xfreerdp")
     };
 #else
-    // On Wayland prefer the SDL client so clipboard talks to the compositor
-    // natively. Fall back to xfreerdp (XWayland) when SDL is not installed.
+    // Match the Flutter client's X11 preference when XWayland is available.
+    // wlfreerdp announces GNOME/MATE file offers but requests text/uri-list
+    // unconditionally on paste. The X11 bridge preserves and normalizes these
+    // file offers for xfreerdp. Pure Wayland sessions still need a native client.
     QStringList candidates;
-    if (!qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")) {
+    if (!qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")
+        && qEnvironmentVariableIsEmpty("DISPLAY")) {
         candidates << QStringLiteral("sdl-freerdp3")
                    << QStringLiteral("sdl-freerdp")
-                   << QStringLiteral("xfreerdp3")
-                   << QStringLiteral("xfreerdp");
+                   << QStringLiteral("wlfreerdp3")
+                   << QStringLiteral("wlfreerdp");
     } else {
         candidates << QStringLiteral("xfreerdp3")
                    << QStringLiteral("xfreerdp")
                    << QStringLiteral("sdl-freerdp3")
-                   << QStringLiteral("sdl-freerdp");
+                   << QStringLiteral("sdl-freerdp")
+                   << QStringLiteral("wlfreerdp3")
+                   << QStringLiteral("wlfreerdp");
     }
 #endif
 
+    const QStringList extraDirs {
+        QDir(QStandardPaths::writableLocation(QStandardPaths::HomeLocation))
+            .filePath(QStringLiteral(".local/bin")),
+        QCoreApplication::applicationDirPath()
+    };
     for (const QString &candidate : candidates) {
-        const QString path = QStandardPaths::findExecutable(candidate);
-        if (!path.isEmpty())
-            return path;
+        const QString onPath = QStandardPaths::findExecutable(candidate);
+        if (!onPath.isEmpty())
+            return onPath;
+        for (const QString &dir : extraDirs) {
+            const QFileInfo info(QDir(dir).filePath(candidate));
+            if (info.isFile() && info.isExecutable())
+                return info.absoluteFilePath();
+        }
     }
     return {};
 }
