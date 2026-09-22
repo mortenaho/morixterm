@@ -119,9 +119,17 @@ Read the full [SECURITY.md](SECURITY.md) before deploying MoriXterm in productio
 
 ## Releases
 
-Run **Actions → Build and Release → Run workflow** on `main`. The workflow chooses the next numbered tag (`v3`, `v4`, `v5`, …), builds the Linux AppImage and DEB plus the Windows installer and portable ZIP from the same commit, and then creates the tag and GitHub Release. The package versions and the version shown in the app come from that tag. The legacy Flutter workflow only uploads CI artifacts and does not publish GitHub Releases.
+Run **Actions → Build and Release → Run workflow** on `main`, leaving `tag` blank to choose the next numbered version (`v3`, `v4`, `v5`, …). Publishing a GitHub Release also starts the workflow automatically, using that release's tagged commit. To rebuild an existing release manually, enter its tag (for example, `v4`) in the workflow input. Numeric tags such as `v4.1.0` are also supported.
 
-The workflow needs `contents: write` permission to push the tag and publish the release. A failed build does not consume a version; if publishing fails after the tag is pushed, inspect that tag before starting another release.
+Every successful run attaches these downloads to the GitHub Release:
+
+- `morixterm_<version>_amd64.deb` — Debian/Ubuntu package.
+- `MoriXterm-<version>-Windows-x64-Setup.exe` — Windows installer.
+- `MoriXterm-<version>-Windows-x64-Portable.zip` — extract and run, including Qt, the Visual C++ runtime and OpenSSH.
+
+The Linux AppImage is also attached when its optional packaging step succeeds. Its failure does not block the three required downloads. All packages use the same source commit and release version. The legacy Flutter workflow only uploads CI artifacts and does not publish GitHub Releases.
+
+The workflow needs `contents: write` permission to create the tag and upload release assets. A failed build does not consume an automatically selected version. If publishing fails after the tag is pushed, rerun the failed publishing job or run the workflow with that existing tag. Existing tags must still point to the built commit; existing release downloads are replaced on retry while the release title and notes are preserved.
 
 ## License and project information
 
