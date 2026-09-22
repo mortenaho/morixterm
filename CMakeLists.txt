@@ -123,6 +123,7 @@ if(BUILD_TESTING AND WIN32)
         src/PtyProcess.cpp src/PtyProcess.h
     )
     target_compile_definitions(windows_pty_test PRIVATE _WIN32_WINNT=0x0A00 WINVER=0x0A00 NTDDI_VERSION=0x0A000006 NOMINMAX WIN32_LEAN_AND_MEAN)
+    set_target_properties(windows_pty_test PROPERTIES WIN32_EXECUTABLE OFF)
     target_link_libraries(windows_pty_test PRIVATE Qt6::Test Qt6::Core)
     add_test(NAME windows_pty_test COMMAND windows_pty_test)
 endif()

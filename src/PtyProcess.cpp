@@ -129,20 +129,13 @@ bool PtyProcess::start(const QString &program, const QStringList &arguments, con
     STARTUPINFOEXW startup {};
     startup.StartupInfo.cb = sizeof(startup);
     startup.lpAttributeList = attributes;
-    // A parent with redirected stdin/stdout (ctest, cmd) otherwise hands those
-    // pipes to the child, so ConPTY input never reaches it and its output
-    // bypasses the terminal. Detach from that console and leave std handles unset.
-    startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
-    startup.StartupInfo.hStdInput = nullptr;
-    startup.StartupInfo.hStdOutput = nullptr;
-    startup.StartupInfo.hStdError = nullptr;
     PROCESS_INFORMATION process {};
-    QStringList commandParts {quoteWindowsArgument(executable)};
+    const QString nativeExecutable = QDir::toNativeSeparators(executable);
+    QStringList commandParts {quoteWindowsArgument(nativeExecutable)};
     for (const QString &argument : arguments)
         commandParts << quoteWindowsArgument(argument);
     std::wstring commandLine = commandParts.join(QLatin1Char(' ')).toStdWString();
     commandLine.push_back(L'\0');
-    const std::wstring executablePath = QDir::toNativeSeparators(executable).toStdWString();
     // Bundled Win32-OpenSSH loads sibling DLLs from its own folder; also give
     // the child a sane TERM so remote Linux shells enable colour/line editing.
     const std::wstring workingDirectory =
@@ -164,9 +157,12 @@ bool PtyProcess::start(const QString &program, const QStringList &arguments, con
         environmentBlock.push_back(L'\0');
     }
     environmentBlock.push_back(L'\0');
-    const BOOL created = CreateProcessW(executablePath.c_str(), commandLine.data(),
+    // lpApplicationName must stay null. When it is set, Windows skips
+    // PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE and the child inherits the parent
+    // console, so terminal input and output never reach this process.
+    const BOOL created = CreateProcessW(nullptr, commandLine.data(),
                                         nullptr, nullptr, FALSE,
-                                        EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT | DETACHED_PROCESS,
+                                        EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
                                         environmentBlock.data(), workingDirectory.c_str(),
                                         &startup.StartupInfo, &process);
     const DWORD createError = created ? ERROR_SUCCESS : GetLastError();
