@@ -5,6 +5,10 @@
 #include <QSignalSpy>
 #include <QTest>
 
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
+
 namespace {
 void recordPty(const char *name, const QByteArray &output, int exits, int errors)
 {
@@ -23,9 +27,19 @@ class PtyProcessWindowsTest : public QObject
     Q_OBJECT
 
 private slots:
+    void initTestCase();
     void interactiveConsole();
     void bundledOpenSsh();
 };
+
+void PtyProcessWindowsTest::initTestCase()
+{
+#ifdef Q_OS_WIN
+    // ctest attaches a console. Without this, cmd/ssh inherit that console and
+    // never use the ConPTY pipes under test.
+    FreeConsole();
+#endif
+}
 
 void PtyProcessWindowsTest::interactiveConsole()
 {
