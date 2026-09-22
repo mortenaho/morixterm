@@ -269,13 +269,19 @@ jobs:
         run: |
           $env:MORIXTERM_TEST_SSH_EXE = (Resolve-Path dist/windows/openssh/ssh.exe).Path
           ctest --test-dir build -C ${{ env.BUILD_TYPE }} --output-on-failure
-          if (Test-Path pty-trace.txt) { Get-Content pty-trace.txt }
+          foreach ($path in @('pty-trace.txt', 'build/pty-trace.txt')) {
+            if (Test-Path $path) { Write-Host "---- $path ----"; Get-Content $path }
+          }
 
       - name: Show PTY trace
         if: always()
         shell: pwsh
         run: |
-          if (Test-Path pty-trace.txt) { Get-Content pty-trace.txt } else { Write-Host 'pty-trace.txt was not written' }
+          $found = $false
+          foreach ($path in @('pty-trace.txt', 'build/pty-trace.txt')) {
+            if (Test-Path $path) { Write-Host "---- $path ----"; Get-Content $path; $found = $true }
+          }
+          if (-not $found) { Write-Host 'pty-trace.txt was not written' }
 
       - name: Build portable Windows ZIP
         shell: pwsh

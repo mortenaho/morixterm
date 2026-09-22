@@ -111,10 +111,6 @@ bool PtyProcess::start(const QString &program, const QStringList &arguments, con
     if (FAILED(result))
         return fail(QStringLiteral("Could not create Windows ConPTY terminal (Windows 10 1809+ required): %1")
                         .arg(windowsError(HRESULT_CODE(result))));
-    // CreatePseudoConsole duplicates these ends. Close the originals before
-    // CreateProcess so the child cannot inherit a second copy of the pipes.
-    closeHandle(inputRead);
-    closeHandle(outputWrite);
 
     SIZE_T attributeBytes = 0;
     InitializeProcThreadAttributeList(nullptr, 1, 0, &attributeBytes);
