@@ -246,12 +246,19 @@ jobs:
 
       - name: Bundle OpenSSH client
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          $release = Invoke-RestMethod -Headers @{ 'User-Agent' = 'MoriXterm' } -Uri 'https://api.github.com/repos/PowerShell/Win32-OpenSSH/releases/latest'
+          $headers = @{
+            'User-Agent' = 'MoriXterm'
+            'Authorization' = "Bearer $env:GH_TOKEN"
+            'Accept' = 'application/vnd.github+json'
+          }
+          $release = Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/PowerShell/Win32-OpenSSH/releases/latest'
           $asset = $release.assets | Where-Object { $_.name -eq 'OpenSSH-Win64.zip' } | Select-Object -First 1
           if (-not $asset) { throw 'OpenSSH-Win64.zip was not found in the latest Win32-OpenSSH release.' }
           $archive = Join-Path $env:RUNNER_TEMP 'OpenSSH-Win64.zip'
-          Invoke-WebRequest -Headers @{ 'User-Agent' = 'MoriXterm' } -Uri $asset.browser_download_url -OutFile $archive
+          Invoke-WebRequest -Headers $headers -Uri $asset.browser_download_url -OutFile $archive
           $extract = Join-Path $env:RUNNER_TEMP 'OpenSSH-Win64'
           Expand-Archive -Path $archive -DestinationPath $extract -Force
           New-Item -ItemType Directory -Force dist/windows/openssh | Out-Null
