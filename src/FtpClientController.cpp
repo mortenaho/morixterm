@@ -394,7 +394,7 @@ void FtpClientController::runListCommand(bool ftpMlsd)
 
 void FtpClientController::parseListing(const QByteArray &output, bool mlsd)
 {
-    QVector<FileEntry> entries = mlsd ? parseMlsd(output) : parseLongListing(output);
+    QVector<FileEntry> entries = mlsd ? parseMlsd(output, m_currentPath) : parseLongListing(output, m_currentPath);
     if (entries.isEmpty() && !output.trimmed().isEmpty()) {
         const QList<QByteArray> lines = output.split('\n');
         for (QByteArray line : lines) {
@@ -411,7 +411,7 @@ void FtpClientController::parseListing(const QByteArray &output, bool mlsd)
     m_entries.setEntries(std::move(entries));
 }
 
-QVector<FileEntry> FtpClientController::parseMlsd(const QByteArray &output) const
+QVector<FileEntry> FtpClientController::parseMlsd(const QByteArray &output, const QString &parentPath) const
 {
     QVector<FileEntry> entries;
     const QList<QByteArray> lines = output.split('\n');
@@ -440,7 +440,7 @@ QVector<FileEntry> FtpClientController::parseMlsd(const QByteArray &output) cons
 
         FileEntry e;
         e.name = name;
-        e.path = joinRemote(m_currentPath, name);
+        e.path = joinRemote(parentPath, name);
         e.directory = type == "dir";
         e.size = facts.value("size").toLongLong();
         e.permissions = QString::fromLatin1(facts.value("unix.mode"));
@@ -451,7 +451,7 @@ QVector<FileEntry> FtpClientController::parseMlsd(const QByteArray &output) cons
     return entries;
 }
 
-QVector<FileEntry> FtpClientController::parseLongListing(const QByteArray &output) const
+QVector<FileEntry> FtpClientController::parseLongListing(const QByteArray &output, const QString &parentPath) const
 {
     QVector<FileEntry> entries;
     static const QRegularExpression unixRx(
@@ -479,7 +479,7 @@ QVector<FileEntry> FtpClientController::parseLongListing(const QByteArray &outpu
                 e.name = e.name.left(arrow);
             if (e.name == QStringLiteral(".") || e.name == QStringLiteral(".."))
                 continue;
-            e.path = joinRemote(m_currentPath, e.name);
+            e.path = joinRemote(parentPath, e.name);
             entries.push_back(std::move(e));
             continue;
         }
@@ -489,7 +489,7 @@ QVector<FileEntry> FtpClientController::parseLongListing(const QByteArray &outpu
             e.directory = dosMatch.captured(3).compare(QStringLiteral("<DIR>"), Qt::CaseInsensitive) == 0;
             e.size = e.directory ? 0 : dosMatch.captured(3).toLongLong();
             e.name = dosMatch.captured(4);
-            e.path = joinRemote(m_currentPath, e.name);
+            e.path = joinRemote(parentPath, e.name);
             e.permissions = QStringLiteral("---------");
             entries.push_back(std::move(e));
         }
@@ -554,20 +554,36 @@ bool FtpClientController::entryIsDirectory(int row) const
 
 void FtpClientController::runRemoteCommand(const QStringList &quoteCommands, const QString &successMessage)
 {
+    runRemoteCommandQueue(quoteCommands, successMessage);
+}
+
+void FtpClientController::runRemoteCommandQueue(QStringList remainingCommands, const QString &successMessage)
+{
     if (m_busy || curlProgram().isEmpty())
         return;
+    if (remainingCommands.isEmpty()) {
+        emit operationFinished(false, QStringLiteral("Nothing to do."));
+        return;
+    }
+
+    constexpr int batchSize = 40;
+    const QStringList batch = remainingCommands.mid(0, batchSize);
+    remainingCommands = remainingCommands.mid(batchSize);
 
     setBusy(true);
-    setStatus(QStringLiteral("Working…"));
+    setStatus(remainingCommands.isEmpty()
+                  ? QStringLiteral("Working…")
+                  : QStringLiteral("Working… %1 commands remaining").arg(remainingCommands.size()));
     m_commandProcess = new QProcess(this);
     QProcess *process = m_commandProcess;
     QStringList args = commonCurlArgs();
     args << QStringLiteral("--silent") << QStringLiteral("--show-error") << QStringLiteral("--fail-with-body");
-    for (const QString &command : quoteCommands)
+    for (const QString &command : batch)
         args << QStringLiteral("--quote") << command;
     args << QStringLiteral("--url") << remoteUrl(m_currentPath, true);
 
-    connect(process, &QProcess::finished, this, [this, process, successMessage](int code, QProcess::ExitStatus status) {
+    connect(process, &QProcess::finished, this,
+            [this, process, successMessage, remainingCommands](int code, QProcess::ExitStatus status) {
         const bool ok = status == QProcess::NormalExit && code == 0;
         const QByteArray err = process->readAllStandardError();
         const QString message = ok ? successMessage
@@ -578,13 +594,24 @@ void FtpClientController::runRemoteCommand(const QStringList &quoteCommands, con
             emit tlsCertificateError(message);
         }
         setBusy(false);
-        setStatus(ok ? message : (message.isEmpty() ? process->errorString() : message));
-        emit operationFinished(ok, m_statusText);
         if (m_commandProcess == process)
             m_commandProcess = nullptr;
         process->deleteLater();
-        if (ok)
-            refresh();
+
+        if (!ok) {
+            setStatus(message.isEmpty() ? process->errorString() : message);
+            emit operationFinished(false, m_statusText);
+            return;
+        }
+
+        if (!remainingCommands.isEmpty()) {
+            runRemoteCommandQueue(remainingCommands, successMessage);
+            return;
+        }
+
+        setStatus(successMessage);
+        emit operationFinished(true, successMessage);
+        refresh();
     });
     connect(process, &QProcess::errorOccurred, this, [this, process](QProcess::ProcessError) {
         if (process->state() != QProcess::NotRunning)
@@ -599,6 +626,121 @@ void FtpClientController::runRemoteCommand(const QStringList &quoteCommands, con
 
     process->start(curlProgram(), args);
     writeSecretConfig(process);
+}
+
+QString FtpClientController::relativeToCurrent(const QString &absolutePath) const
+{
+    QString current = m_currentPath;
+    QString path = absolutePath;
+    while (current.endsWith('/'))
+        current.chop(1);
+    while (path.endsWith('/') && path.size() > 1)
+        path.chop(1);
+
+    if (path == current)
+        return {};
+    if (current == QStringLiteral("/") && path.startsWith('/'))
+        return path.mid(1);
+    if (path.startsWith(current + QLatin1Char('/')))
+        return path.mid(current.size() + 1);
+    return path.section('/', -1);
+}
+
+bool FtpClientController::listRemoteDirectory(const QString &absolutePath, QVector<FileEntry> &entries, QString *errorMessage)
+{
+    entries.clear();
+    if (curlProgram().isEmpty()) {
+        if (errorMessage)
+            *errorMessage = QStringLiteral("curl is required for FTP/SFTP sessions.");
+        return false;
+    }
+
+    auto runList = [&](bool ftpMlsd) -> bool {
+        QProcess process;
+        QStringList args = commonCurlArgs();
+        args << QStringLiteral("--silent") << QStringLiteral("--show-error") << QStringLiteral("--fail-with-body");
+        if (ftpMlsd)
+            args << QStringLiteral("--request") << QStringLiteral("MLSD");
+        args << QStringLiteral("--url") << remoteUrl(absolutePath, true);
+        process.start(curlProgram(), args);
+        writeSecretConfig(&process);
+        if (!process.waitForFinished(60000)) {
+            process.kill();
+            process.waitForFinished(2000);
+            if (errorMessage)
+                *errorMessage = QStringLiteral("Timed out while listing %1.").arg(absolutePath);
+            return false;
+        }
+        const QByteArray out = process.readAllStandardOutput();
+        const QByteArray err = process.readAllStandardError();
+        if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+            if (ftpMlsd && m_protocol == QStringLiteral("ftp"))
+                return false;
+            if (errorMessage) {
+                *errorMessage = QString::fromLocal8Bit(err).trimmed();
+                if (errorMessage->isEmpty())
+                    *errorMessage = process.errorString();
+            }
+            return false;
+        }
+        entries = ftpMlsd ? parseMlsd(out, absolutePath) : parseLongListing(out, absolutePath);
+        if (entries.isEmpty() && !out.trimmed().isEmpty()) {
+            const QList<QByteArray> lines = out.split('\n');
+            for (QByteArray line : lines) {
+                line = line.trimmed();
+                if (line.isEmpty() || line == "." || line == "..")
+                    continue;
+                FileEntry e;
+                e.name = QString::fromUtf8(line);
+                e.path = joinRemote(absolutePath, e.name);
+                e.permissions = QStringLiteral("---------");
+                entries.push_back(e);
+            }
+        }
+        return true;
+    };
+
+    if (m_protocol == QStringLiteral("ftp")) {
+        if (runList(true))
+            return true;
+        return runList(false);
+    }
+    return runList(false);
+}
+
+void FtpClientController::appendRecursiveDeleteCommands(const QString &absolutePath, bool directory,
+                                                        QStringList &commands, QString *errorMessage)
+{
+    const QString target = relativeToCurrent(absolutePath);
+    if (target.isEmpty() || target == QStringLiteral(".") || target == QStringLiteral("..")
+        || target.contains(QStringLiteral("../")) || target.startsWith(QStringLiteral("../"))) {
+        if (errorMessage)
+            *errorMessage = QStringLiteral("Refusing to delete an unsafe path.");
+        return;
+    }
+
+    if (directory) {
+        QVector<FileEntry> children;
+        QString listError;
+        if (!listRemoteDirectory(absolutePath, children, &listError)) {
+            if (errorMessage)
+                *errorMessage = listError.isEmpty() ? QStringLiteral("Could not list folder contents.") : listError;
+            return;
+        }
+        for (const FileEntry &child : children) {
+            appendRecursiveDeleteCommands(child.path, child.directory, commands, errorMessage);
+            if (errorMessage && !errorMessage->isEmpty())
+                return;
+        }
+        commands << (m_protocol == QStringLiteral("sftp")
+                         ? QStringLiteral("rmdir %1").arg(target)
+                         : QStringLiteral("RMD %1").arg(target));
+        return;
+    }
+
+    commands << (m_protocol == QStringLiteral("sftp")
+                     ? QStringLiteral("rm %1").arg(target)
+                     : QStringLiteral("DELE %1").arg(target));
 }
 
 void FtpClientController::createFolder(const QString &name)
@@ -630,13 +772,49 @@ void FtpClientController::renameEntry(int row, const QString &newName)
 
 void FtpClientController::deleteEntry(int row)
 {
-    const FileEntry *entry = m_entries.entryAt(row);
-    if (!entry)
+    deleteEntries(QVariantList{row});
+}
+
+void FtpClientController::deleteEntries(const QVariantList &rows)
+{
+    if (m_busy) {
+        emit operationFinished(false, QStringLiteral("Another file operation is already running."));
         return;
-    if (m_protocol == QStringLiteral("sftp"))
-        runRemoteCommand({QStringLiteral("%1 %2").arg(entry->directory ? QStringLiteral("rmdir") : QStringLiteral("rm"), entry->name)}, QStringLiteral("Deleted."));
-    else
-        runRemoteCommand({QStringLiteral("%1 %2").arg(entry->directory ? QStringLiteral("RMD") : QStringLiteral("DELE"), entry->name)}, QStringLiteral("Deleted."));
+    }
+    if (rows.isEmpty()) {
+        emit operationFinished(false, QStringLiteral("Select one or more files or folders."));
+        return;
+    }
+
+    QStringList commands;
+    QString error;
+    int fileCount = 0;
+    int folderCount = 0;
+    for (const QVariant &value : rows) {
+        const FileEntry *entry = m_entries.entryAt(value.toInt());
+        if (!entry)
+            continue;
+        if (entry->directory)
+            ++folderCount;
+        else
+            ++fileCount;
+        appendRecursiveDeleteCommands(entry->path, entry->directory, commands, &error);
+        if (!error.isEmpty()) {
+            emit operationFinished(false, error);
+            return;
+        }
+    }
+
+    if (commands.isEmpty()) {
+        emit operationFinished(false, QStringLiteral("Nothing to delete."));
+        return;
+    }
+
+    setStatus(QStringLiteral("Preparing to delete %1 item(s)…").arg(fileCount + folderCount));
+    const QString message = (fileCount + folderCount) == 1
+        ? QStringLiteral("Deleted.")
+        : QStringLiteral("Deleted %1 item(s).").arg(fileCount + folderCount);
+    runRemoteCommandQueue(commands, message);
 }
 
 void FtpClientController::chmodEntry(int row, const QString &mode)

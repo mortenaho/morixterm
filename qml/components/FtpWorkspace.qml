@@ -147,6 +147,34 @@ Item {
         return remoteSelection.length ? Number(remoteSelection[0]) : -1
     }
 
+    function remoteSelectionHasDirectory() {
+        for (var i = 0; i < remoteSelection.length; ++i) {
+            if (remoteFiles.entryIsDirectory(Number(remoteSelection[i])))
+                return true
+        }
+        return false
+    }
+
+    function remoteSelectionSummary() {
+        var files = 0
+        var folders = 0
+        for (var i = 0; i < remoteSelection.length; ++i) {
+            if (remoteFiles.entryIsDirectory(Number(remoteSelection[i])))
+                folders++
+            else
+                files++
+        }
+        var parts = []
+        if (folders > 0) parts.push(folders + (folders === 1 ? " folder" : " folders"))
+        if (files > 0) parts.push(files + (files === 1 ? " file" : " files"))
+        return parts.join(" and ")
+    }
+
+    function deleteSelectedRemote() {
+        if (remoteSelection.length === 0) return
+        remoteDeleteDialog.open()
+    }
+
     function uploadSelected() {
         var paths = selectedLocalPaths()
         if (paths.length === 0) return
@@ -319,25 +347,45 @@ Item {
         id: remoteDeleteDialog
         modal: true
         anchors.centerIn: parent
-        width: 430
+        width: 460
         padding: 20
         standardButtons: Dialog.NoButton
         background: Rectangle { radius: 16; color: root.panel2; border.color: root.border }
         contentItem: ColumnLayout {
             spacing: 14
-            Label { text: "Delete remote item?"; color: root.textColor; font.pixelSize: 18; font.bold: true }
-            Label { text: remoteFiles.entryName(root.firstRemoteRow()); color: root.muted; Layout.fillWidth: true; elide: Text.ElideMiddle }
-            Label { text: "Directories must be empty before they can be removed."; color: root.warning; font.pixelSize: 10; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+            Label {
+                text: root.remoteSelection.length > 1 ? "Delete selected items?" : (root.remoteSelectionHasDirectory() ? "Delete folder?" : "Delete file?")
+                color: root.textColor
+                font.pixelSize: 18
+                font.bold: true
+            }
+            Label {
+                text: root.remoteSelection.length > 1
+                      ? ("Delete " + root.remoteSelectionSummary() + " from " + remoteFiles.currentPath)
+                      : remoteFiles.entryName(root.firstRemoteRow())
+                color: root.muted
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+            }
+            Label {
+                visible: root.remoteSelectionHasDirectory()
+                text: "Folders are deleted recursively, including all nested files and subfolders. This cannot be undone."
+                color: root.warning
+                font.pixelSize: 10
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+            }
             RowLayout {
                 Layout.fillWidth: true
                 Item { Layout.fillWidth: true }
                 UI.MButton { text: "Cancel"; compact: true; onClicked: remoteDeleteDialog.close() }
                 UI.MButton {
-                    text: "Delete"
+                    text: root.remoteSelection.length > 1 ? ("Delete " + root.remoteSelection.length) : "Delete"
                     danger: true
                     compact: true
+                    enabled: !remoteFiles.busy && root.remoteSelection.length > 0
                     onClicked: {
-                        remoteFiles.deleteEntry(root.firstRemoteRow())
+                        remoteFiles.deleteEntries(root.remoteSelection)
                         root.remoteSelection = []
                         remoteDeleteDialog.close()
                     }
@@ -418,7 +466,7 @@ Item {
                 enabled: root.remoteSelection.length === 1
                 onClicked: { remoteContext.close(); remoteModeField.text = "755"; remoteChmodDialog.open(); remoteModeField.forceActiveFocus() }
             }
-            UI.MContextItem { width: parent.width; iconText: "×"; text: "Delete…"; danger: true; enabled: root.remoteSelection.length === 1; onClicked: { remoteContext.close(); remoteDeleteDialog.open() } }
+            UI.MContextItem { width: parent.width; iconText: "×"; text: root.remoteSelection.length > 1 ? ("Delete " + root.remoteSelection.length + " items…") : "Delete…"; danger: true; enabled: root.remoteSelection.length > 0 && !remoteFiles.busy; onClicked: { remoteContext.close(); root.deleteSelectedRemote() } }
             Rectangle { width: parent.width; height: 1; color: root.border }
             UI.MContextItem { width: parent.width; iconText: "↻"; text: "Refresh"; onClicked: { remoteFiles.refresh(); remoteContext.close() } }
         }
@@ -608,6 +656,7 @@ Item {
                         }
                         BusyIndicator { running: remoteFiles.busy; visible: running; implicitWidth: 24; implicitHeight: 24 }
                         UI.MIconButton { text: "+D"; tip: "New remote folder"; onClicked: { remoteFolderDialog.open(); remoteFolderName.forceActiveFocus() } }
+                        UI.MIconButton { text: "×"; tip: "Delete selected"; enabled: root.remoteSelection.length > 0 && !remoteFiles.busy; onClicked: root.deleteSelectedRemote() }
                         UI.MIconButton { text: "↻"; tip: "Refresh remote files"; enabled: !remoteFiles.busy; onClicked: remoteFiles.refresh() }
                     }
                     RowLayout {

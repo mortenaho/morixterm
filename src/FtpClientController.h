@@ -62,6 +62,7 @@ public:
     Q_INVOKABLE void createFolder(const QString &name);
     Q_INVOKABLE void renameEntry(int row, const QString &newName);
     Q_INVOKABLE void deleteEntry(int row);
+    Q_INVOKABLE void deleteEntries(const QVariantList &rows);
     Q_INVOKABLE void chmodEntry(int row, const QString &mode);
 
     Q_INVOKABLE void uploadPaths(const QVariantList &localPaths, bool overwrite);
@@ -111,9 +112,13 @@ private:
     void setBusy(bool busy);
     void runListCommand(bool ftpMlsd);
     void parseListing(const QByteArray &output, bool mlsd);
-    QVector<FileEntry> parseMlsd(const QByteArray &output) const;
-    QVector<FileEntry> parseLongListing(const QByteArray &output) const;
+    QVector<FileEntry> parseMlsd(const QByteArray &output, const QString &parentPath) const;
+    QVector<FileEntry> parseLongListing(const QByteArray &output, const QString &parentPath) const;
     void runRemoteCommand(const QStringList &quoteCommands, const QString &successMessage);
+    void runRemoteCommandQueue(QStringList remainingCommands, const QString &successMessage);
+    bool listRemoteDirectory(const QString &absolutePath, QVector<FileEntry> &entries, QString *errorMessage);
+    QString relativeToCurrent(const QString &absolutePath) const;
+    void appendRecursiveDeleteCommands(const QString &absolutePath, bool directory, QStringList &commands, QString *errorMessage);
     QStringList commonCurlArgs() const;
     void writeSecretConfig(QProcess *process) const;
     bool isTlsCertificateError(int exitCode, const QByteArray &stderrData) const;

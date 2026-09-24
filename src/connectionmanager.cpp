@@ -1,5 +1,7 @@
 #include "connectionmanager.h"
 
+#include <QCoreApplication>
+#include <QDir>
 #include <QFileInfo>
 #include <QStandardPaths>
 
@@ -146,10 +148,27 @@ void ConnectionManager::setStatusText(const QString &status)
 
 QString ConnectionManager::findRdpClient() const
 {
-    for (const auto &candidate : {QStringLiteral("wlfreerdp"), QStringLiteral("xfreerdp")}) {
+    const QStringList candidates = qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")
+        ? QStringList{QStringLiteral("xfreerdp3"), QStringLiteral("xfreerdp"),
+                      QStringLiteral("wlfreerdp3"), QStringLiteral("wlfreerdp"),
+                      QStringLiteral("sdl-freerdp3"), QStringLiteral("sdl-freerdp")}
+        : QStringList{QStringLiteral("wlfreerdp3"), QStringLiteral("wlfreerdp"),
+                      QStringLiteral("sdl-freerdp3"), QStringLiteral("sdl-freerdp"),
+                      QStringLiteral("xfreerdp3"), QStringLiteral("xfreerdp")};
+    const QStringList extraDirs {
+        QDir(QStandardPaths::writableLocation(QStandardPaths::HomeLocation))
+            .filePath(QStringLiteral(".local/bin")),
+        QCoreApplication::applicationDirPath()
+    };
+    for (const auto &candidate : candidates) {
         const auto executable = QStandardPaths::findExecutable(candidate);
         if (!executable.isEmpty())
             return executable;
+        for (const QString &dir : extraDirs) {
+            const QFileInfo info(QDir(dir).filePath(candidate));
+            if (info.isFile() && info.isExecutable())
+                return info.absoluteFilePath();
+        }
     }
     return {};
 }
