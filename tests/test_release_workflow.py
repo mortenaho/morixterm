@@ -59,6 +59,18 @@ class ReleaseWorkflowTests(unittest.TestCase):
     def test_manual_run_chooses_next_version_at_checked_out_commit(self):
         self.assertEqual(self.resolve(), {"tag": "v4", "version": "4", "sha": self.head})
 
+    def test_push_to_main_chooses_next_version(self):
+        self.assertEqual(self.resolve(GITHUB_EVENT_NAME="push"),
+                         {"tag": "v4", "version": "4", "sha": self.head})
+
+    def test_workflow_triggers_include_main_push(self):
+        # PyYAML 1.1 parses the key "on" as boolean True.
+        triggers = WORKFLOW.get("on", WORKFLOW.get(True))
+        self.assertIn("push", triggers)
+        self.assertEqual(triggers["push"]["branches"], ["main"])
+        self.assertIn("workflow_dispatch", triggers)
+        self.assertIn("release", triggers)
+
     def test_published_release_builds_tagged_commit_not_main(self):
         self.assertEqual(self.resolve(GITHUB_EVENT_NAME="release", EVENT_TAG="v3", GITHUB_SHA=self.first),
                          {"tag": "v3", "version": "3", "sha": self.first})

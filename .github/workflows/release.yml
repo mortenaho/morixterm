@@ -1,6 +1,8 @@
 name: Build and Release
 
 on:
+  push:
+    branches: [main]
   release:
     types: [published]
   workflow_dispatch:
@@ -31,7 +33,7 @@ jobs:
       sha: ${{ steps.version.outputs.sha }}
     steps:
       - name: Require main branch
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
         shell: bash
         run: test "$GITHUB_REF" = 'refs/heads/main'
 
@@ -71,6 +73,7 @@ jobs:
               exit 1
             fi
           else
+            # push to main and blank workflow_dispatch create the next major tag.
             tag="$(python3 scripts/next_release_version.py)"
             sha="$(git rev-parse HEAD)"
           fi
